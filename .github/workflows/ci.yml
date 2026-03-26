@@ -1,0 +1,136 @@
+# This pipeline runs on every push to main and on PRs.
+# It has 3 jobs that run in sequence: test → build → deploy.
+
+name: CI/CD
+
+# TRIGGERS: When does this pipeline run?
+on:
+  push:
+    branches: [main]    # Deploy on push to main
+  pull_request:
+    branches: [main]    # Test on PRs (no deploy)
+
+# PERMISSIONS: The pipeline needs to assume an AWS role via OIDC.
+# This is more secure than storing AWS keys as secrets — GitHub proves
+# its identity to AWS, and AWS grants temporary credentials.
+permissions:
+  id-token: write   # Needed for OIDC federation with AWS
+  contents: read    # Needed to checkout code
+
+# ENVIRONMENT VARIABLES shared across all jobs
+env:
+  AWS_REGION: us-east-1
+
+jobs:
+  # ============================================================
+  # JOB 1: TEST
+  # Runs Rust unit tests. No AWS credentials needed.
+  # This catches bugs before we waste time building/deploying.
+  # ============================================================
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      # Check out the repo code
+      - uses: actions/checkout@v4
+
+      # Install Rust toolchain. actions-rust-lang/setup-rust-toolchain
+      # also sets up caching so subsequent runs are faster.
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+
+      # Run all unit tests across the workspace.
+      # --lib means only library tests (no integration tests that need a DB).
+      - name: Run tests
+        run: cargo test --lib --workspace
+
+  # ============================================================
+  # JOB 2: BUILD
+  # Cross-compiles Lambda binaries for ARM64 Linux.
+  # This is where the macOS cross-compile issue disappears —
+  # we're already on Linux, so cargo-lambda just works.
+  # ============================================================
+  build:
+    name: Build Lambdas
+    runs-on: ubuntu-latest
+    needs: test  # Only build if tests pass
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+
+      # Install cargo-lambda. On Linux, it uses zig under the hood
+      # for cross-compilation, but since host is already Linux,
+      # building for ARM64 Linux is straightforward.
+      - name: Install cargo-lambda
+        run: pip install cargo-lambda
+
+      # Build all 4 Lambda functions as release ARM64 binaries.
+      # The release profile in Cargo.toml applies opt-level='z',
+      # LTO, and strip for minimal binary size.
+      - name: Build Lambda binaries
+        run: cargo lambda build --release --arm64 --workspace
+
+      # Upload the built binaries as a GitHub Actions artifact.
+      # The deploy job (which runs separately) downloads these.
+      # This decouples build from deploy — you could re-deploy
+      # an old build without rebuilding.
+      - name: Upload Lambda artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: lambda-binaries
+          path: target/lambda/
+          retention-days: 7
+
+  # ============================================================
+  # JOB 3: DEPLOY
+  # Runs CDK deploy to push everything to AWS.
+  # Only runs on push to main (not on PRs).
+  # ============================================================
+  deploy:
+    name: Deploy
+    runs-on: ubuntu-latest
+    needs: build  # Only deploy if build succeeds
+    if: github.ref == 'refs/heads/main'  # Skip deploy on PRs
+    steps:
+      - uses: actions/checkout@v4
+
+      # Download the Lambda binaries built in the previous job.
+      # They land in target/lambda/ — exactly where CDK expects them.
+      - name: Download Lambda artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: lambda-binaries
+          path: target/lambda/
+
+      # Authenticate to AWS using OIDC federation.
+      # This requires a one-time setup in AWS:
+      #   1. Create an OIDC identity provider for GitHub
+      #   2. Create an IAM role that trusts that provider
+      #   3. Store the role ARN as a GitHub secret
+      # No long-lived AWS keys needed.
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      # Install CDK and Python dependencies
+      - name: Setup CDK
+        working-directory: infrastructure
+        run: |
+          npm install -g aws-cdk
+          python -m pip install -r requirements.txt
+
+      # CDK diff shows what will change before deploying.
+      # This appears in the GitHub Actions log so you can
+      # review changes even after they've been applied.
+      - name: CDK diff
+        working-directory: infrastructure
+        run: cdk diff --all || true
+
+      # Deploy all stacks in dependency order.
+      # --require-approval never: skip the interactive prompt
+      # (safe because we reviewed the diff above, and this only
+      # runs on main after PR review).
+      - name: CDK deploy
+        working-directory: infrastructure
+        run: cdk deploy --all --require-approval never

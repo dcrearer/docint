@@ -1,0 +1,22 @@
+# Rust
+target/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# CDK
+infrastructure/cdk.out/
+infrastructure/cdk.context.json
+
+# Environment
+.env
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# OS
+.DS_Store

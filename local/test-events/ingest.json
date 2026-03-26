@@ -1,0 +1,6 @@
+{
+  "bucket": "YOUR-BUCKET-NAME",
+  "key": "docs/rust-guide.txt",
+  "tenant_id": "tenant-1",
+  "title": "Rust Programming Guide"
+}

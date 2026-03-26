@@ -1,0 +1,7 @@
+FROM rust:1.94-bookworm
+RUN apt-get update && apt-get install -y cmake clang pkg-config && rm -rf /var/lib/apt/lists/*
+RUN cargo install cargo-lambda
+WORKDIR /app
+COPY . .
+RUN cargo lambda build --release --arm64 -p lambda-search -p lambda-metadata -p lambda-compare
+# Artifacts land in /app/target/lambda/{lambda-search,lambda-metadata,lambda-compare}/bootstrap

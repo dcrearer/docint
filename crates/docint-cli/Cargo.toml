@@ -1,0 +1,10 @@
+[package]
+name = "docint-cli"
+version = "0.1.0"
+edition.workspace = true
+
+[dependencies]
+docint-core = { path = "../docint-core" }
+tokio = { workspace = true }
+anyhow = { workspace = true }
+uuid = { workspace = true }

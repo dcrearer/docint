@@ -1,0 +1,5 @@
+{
+  "query": "How does Rust handle memory safety?",
+  "tenant_id": "tenant-1",
+  "limit": 3
+}

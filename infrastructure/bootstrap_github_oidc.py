@@ -10,9 +10,12 @@ Deploy this manually once:
 
 Then add the role ARN output as a GitHub secret named AWS_DEPLOY_ROLE_ARN.
 """
-import aws_cdk as cdk
+
 import os
-from aws_cdk import Stack, CfnOutput, aws_iam as iam
+
+import aws_cdk as cdk
+from aws_cdk import CfnOutput, Stack
+from aws_cdk import aws_iam as iam
 from constructs import Construct
 
 
@@ -24,7 +27,8 @@ class GitHubOidcStack(Stack):
         # GitHub signs a JWT for each workflow run, and AWS verifies it
         # against this provider before issuing temporary credentials.
         provider = iam.OpenIdConnectProvider(
-            self, "GitHubOidc",
+            self,
+            "GitHubOidc",
             url="https://token.actions.githubusercontent.com",
             client_ids=["sts.amazonaws.com"],
         )
@@ -33,7 +37,8 @@ class GitHubOidcStack(Stack):
         # The condition restricts it to your specific repo and branch.
         # Change "OWNER/REPO" to your actual GitHub repo.
         role = iam.Role(
-            self, "DeployRole",
+            self,
+            "DeployRole",
             role_name="docint-github-deploy",
             assumed_by=iam.FederatedPrincipal(
                 provider.open_id_connect_provider_arn,
@@ -43,7 +48,7 @@ class GitHubOidcStack(Stack):
                     },
                     "StringLike": {
                         # CHANGE THIS to your repo: "your-username/docint"
-                        "token.actions.githubusercontent.com:sub": "repo:OWNER/docint:*",
+                        "token.actions.githubusercontent.com:sub": "repo:dcrearer/docint:*",
                     },
                 },
                 assume_role_action="sts:AssumeRoleWithWebIdentity",
@@ -52,16 +57,25 @@ class GitHubOidcStack(Stack):
 
         # Permissions the deploy role needs.
         # CloudFormation + CDK need broad permissions to create resources.
-        role.add_managed_policy(iam.ManagedPolicy.from_aws_managed_policy_name("AdministratorAccess"))
+        role.add_managed_policy(
+            iam.ManagedPolicy.from_aws_managed_policy_name("AdministratorAccess")
+        )
 
-        CfnOutput(self, "RoleArn", value=role.role_arn,
-                  description="Add this as GitHub secret AWS_DEPLOY_ROLE_ARN")
+        CfnOutput(
+            self,
+            "RoleArn",
+            value=role.role_arn,
+            description="Add this as GitHub secret AWS_DEPLOY_ROLE_ARN",
+        )
 
 
 app = cdk.App()
-GitHubOidcStack(app, "DocintGitHubOidcStack",
-                env=cdk.Environment(
-                    account=os.environ.get("CDK_DEFAULT_ACCOUNT"),
-                    region=os.environ.get("CDK_DEFAULT_REGION", "us-east-1"),
-                ))
+GitHubOidcStack(
+    app,
+    "DocintGitHubOidcStack",
+    env=cdk.Environment(
+        account=os.environ.get("CDK_DEFAULT_ACCOUNT"),
+        region=os.environ.get("CDK_DEFAULT_REGION", "us-east-1"),
+    ),
+)
 app.synth()

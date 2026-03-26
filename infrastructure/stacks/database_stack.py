@@ -40,7 +40,7 @@ class DatabaseStack(Stack):
         # Security groups
         self.db_sg = ec2.SecurityGroup(self, "DbSg", vpc=self.vpc, description="PostgreSQL access")
         self.lambda_sg = ec2.SecurityGroup(self, "LambdaSg", vpc=self.vpc, description="Lambda functions")
-        self.db_sg.add_ingress_rule(self.lambda_sg, ec2.Port.tcp(5432), "Lambda → Postgres")
+        self.db_sg.add_ingress_rule(self.lambda_sg, ec2.Port.tcp(5432), "Lambda to Postgres")
 
         # Aurora Serverless v2
         self.cluster = rds.DatabaseCluster(

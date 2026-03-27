@@ -50,18 +50,16 @@ async fn main() -> Result<()> {
         .await
         .context("Failed to invoke agent")?;
 
+    let bytes = resp.response.collect().await?.into_bytes();
+    let raw = String::from_utf8_lossy(&bytes);
+
+    // Strip surrounding quotes and unescape
+    let clean = raw.trim().trim_matches('"');
+    let clean = clean.replace("\\n", "\n").replace("\\\"", "\"");
+
     let mut stdout = io::stdout().lock();
-    let mut stream = resp.response.into_async_read();
-    let mut buf = [0u8; 256];
-    loop {
-        let n = tokio::io::AsyncReadExt::read(&mut stream, &mut buf).await?;
-        if n == 0 {
-            break;
-        }
-        stdout.write_all(&buf[..n])?;
-        stdout.flush()?;
-    }
-    println!();
+    write!(stdout, "{clean}")?;
+    writeln!(stdout)?;
 
     Ok(())
 }

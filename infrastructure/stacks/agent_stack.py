@@ -26,6 +26,14 @@ class AgentStack(Stack):
             actions=["bedrock-agentcore:Invoke*", "bedrock-agentcore:GetGateway"],
             resources=["*"],
         ))
+        role.add_to_policy(iam.PolicyStatement(
+            actions=["ecr:GetAuthorizationToken"],
+            resources=["*"],
+        ))
+        role.add_to_policy(iam.PolicyStatement(
+            actions=["ecr:BatchGetImage", "ecr:GetDownloadUrlForLayer"],
+            resources=[f"arn:aws:ecr:{self.region}:{self.account}:repository/cdk-*"],
+        ))
 
         # Build and push agent container to ECR
         image = ecr_assets.DockerImageAsset(

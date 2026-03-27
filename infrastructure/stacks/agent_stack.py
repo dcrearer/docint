@@ -13,26 +13,60 @@ class AgentStack(Stack):
     def __init__(self, scope: Construct, id: str, gateway: GatewayStack, **kwargs):
         super().__init__(scope, id, **kwargs)
 
-        # Role for the agent runtime
+        # Trust policy per AgentCore docs
         role = iam.Role(
             self, "AgentRole",
-            assumed_by=iam.ServicePrincipal("bedrock-agentcore.amazonaws.com"),
+            assumed_by=iam.PrincipalWithConditions(
+                iam.ServicePrincipal("bedrock-agentcore.amazonaws.com"),
+                conditions={
+                    "StringEquals": {"aws:SourceAccount": self.account},
+                    "ArnLike": {"aws:SourceArn": f"arn:aws:bedrock-agentcore:{self.region}:{self.account}:*"},
+                },
+            ),
         )
+
+        # ECR permissions
         role.add_to_policy(iam.PolicyStatement(
-            actions=["bedrock:InvokeModel"],
-            resources=["arn:aws:bedrock:*::foundation-model/*"],
-        ))
-        role.add_to_policy(iam.PolicyStatement(
-            actions=["bedrock-agentcore:Invoke*", "bedrock-agentcore:GetGateway"],
-            resources=["*"],
-        ))
-        role.add_to_policy(iam.PolicyStatement(
+            sid="ECRTokenAccess",
             actions=["ecr:GetAuthorizationToken"],
             resources=["*"],
         ))
         role.add_to_policy(iam.PolicyStatement(
+            sid="ECRImageAccess",
             actions=["ecr:BatchGetImage", "ecr:GetDownloadUrlForLayer"],
-            resources=[f"arn:aws:ecr:{self.region}:{self.account}:repository/cdk-*"],
+            resources=[f"arn:aws:ecr:{self.region}:{self.account}:repository/*"],
+        ))
+
+        # Bedrock model invocation
+        role.add_to_policy(iam.PolicyStatement(
+            actions=["bedrock:InvokeModel", "bedrock:InvokeModelWithResponseStream"],
+            resources=["arn:aws:bedrock:*::foundation-model/*"],
+        ))
+
+        # Gateway access
+        role.add_to_policy(iam.PolicyStatement(
+            actions=["bedrock-agentcore:Invoke*", "bedrock-agentcore:GetGateway"],
+            resources=["*"],
+        ))
+
+        # Logs
+        role.add_to_policy(iam.PolicyStatement(
+            actions=["logs:CreateLogGroup", "logs:DescribeLogStreams"],
+            resources=[f"arn:aws:logs:{self.region}:{self.account}:log-group:/aws/bedrock-agentcore/runtimes/*"],
+        ))
+        role.add_to_policy(iam.PolicyStatement(
+            actions=["logs:DescribeLogGroups"],
+            resources=[f"arn:aws:logs:{self.region}:{self.account}:log-group:*"],
+        ))
+        role.add_to_policy(iam.PolicyStatement(
+            actions=["logs:CreateLogStream", "logs:PutLogEvents"],
+            resources=[f"arn:aws:logs:{self.region}:{self.account}:log-group:/aws/bedrock-agentcore/runtimes/*:log-stream:*"],
+        ))
+
+        # X-Ray
+        role.add_to_policy(iam.PolicyStatement(
+            actions=["xray:PutTraceSegments", "xray:PutTelemetryRecords", "xray:GetSamplingRules", "xray:GetSamplingTargets"],
+            resources=["*"],
         ))
 
         # Build and push agent container to ECR

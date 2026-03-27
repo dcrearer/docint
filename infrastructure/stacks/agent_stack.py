@@ -25,18 +25,6 @@ class AgentStack(Stack):
             ),
         )
 
-        # ECR permissions
-        role.add_to_policy(iam.PolicyStatement(
-            sid="ECRTokenAccess",
-            actions=["ecr:GetAuthorizationToken"],
-            resources=["*"],
-        ))
-        role.add_to_policy(iam.PolicyStatement(
-            sid="ECRImageAccess",
-            actions=["ecr:BatchGetImage", "ecr:GetDownloadUrlForLayer"],
-            resources=[f"arn:aws:ecr:{self.region}:{self.account}:repository/*"],
-        ))
-
         # Bedrock model invocation
         role.add_to_policy(iam.PolicyStatement(
             actions=["bedrock:InvokeModel", "bedrock:InvokeModelWithResponseStream"],
@@ -74,6 +62,13 @@ class AgentStack(Stack):
             self, "AgentImage",
             directory="../agent",
         )
+        image.repository.grant_pull(role)
+
+        # grant_pull doesn't include GetAuthorizationToken (global action)
+        role.add_to_policy(iam.PolicyStatement(
+            actions=["ecr:GetAuthorizationToken"],
+            resources=["*"],
+        ))
 
         # AgentCore Runtime with container deployment
         runtime = agentcore.CfnRuntime(
@@ -94,6 +89,9 @@ class AgentStack(Stack):
                 network_mode="PUBLIC",
             ),
         )
+
+        # Ensure IAM policy propagates before Runtime validates ECR access
+        runtime.node.add_dependency(role)
 
         # Runtime endpoint
         endpoint = agentcore.CfnRuntimeEndpoint(

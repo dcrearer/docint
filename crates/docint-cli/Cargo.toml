@@ -11,3 +11,4 @@ serde_json = { workspace = true }
 aws-config = { version = "1", features = ["behavior-version-latest"] }
 aws-sdk-bedrockagentcore = "1"
 clap = { version = "4", features = ["derive", "env"] }
+indicatif = "0.17"

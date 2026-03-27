@@ -1,6 +1,7 @@
 use anyhow::{Context, Result};
 use aws_sdk_bedrockagentcore::primitives::Blob;
 use clap::Parser;
+use indicatif::{ProgressBar, ProgressStyle};
 use serde::Serialize;
 use std::io::{self, Write};
 use tokio::io::AsyncReadExt;
@@ -30,11 +31,8 @@ struct Request {
     tenant_id: String,
 }
 
-/// Stream bytes to stdout, unescaping \\n → newline and \\\" → quote,
-/// stripping a leading/trailing double-quote wrapper.
 fn stream_unescape(raw: &[u8], stdout: &mut impl Write) -> io::Result<()> {
     let s = std::str::from_utf8(raw).unwrap_or("");
-    // Strip wrapping quotes on first/last chunk
     let s = s.strip_prefix('"').unwrap_or(s);
     let s = s.strip_suffix('"').unwrap_or(s);
 
@@ -58,6 +56,15 @@ fn stream_unescape(raw: &[u8], stdout: &mut impl Write) -> io::Result<()> {
 async fn main() -> Result<()> {
     let cli = Cli::parse();
 
+    let spinner = ProgressBar::new_spinner();
+    spinner.set_style(
+        ProgressStyle::default_spinner()
+            .template("{spinner:.cyan} {msg}")
+            .unwrap(),
+    );
+    spinner.set_message("Thinking...");
+    spinner.enable_steady_tick(std::time::Duration::from_millis(80));
+
     let config = aws_config::load_defaults(aws_config::BehaviorVersion::latest()).await;
     let client = aws_sdk_bedrockagentcore::Client::new(&config);
 
@@ -74,6 +81,8 @@ async fn main() -> Result<()> {
         .send()
         .await
         .context("Failed to invoke agent")?;
+
+    spinner.finish_and_clear();
 
     let mut stdout = io::stdout().lock();
     let mut stream = resp.response.into_async_read();

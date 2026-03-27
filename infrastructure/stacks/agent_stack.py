@@ -3,7 +3,7 @@ from aws_cdk import (
     CfnOutput,
     aws_bedrockagentcore as agentcore,
     aws_iam as iam,
-    aws_s3_assets as s3_assets,
+    aws_ecr_assets as ecr_assets,
 )
 from constructs import Construct
 from stacks.gateway_stack import GatewayStack
@@ -27,30 +27,27 @@ class AgentStack(Stack):
             resources=["*"],
         ))
 
-        # Package agent code as S3 asset
-        agent_code = s3_assets.Asset(self, "AgentCode", path="../agent")
+        # Build and push agent container to ECR
+        image = ecr_assets.DockerImageAsset(
+            self, "AgentImage",
+            directory="../agent",
+            platform=ecr_assets.Platform.LINUX_ARM64,
+        )
 
-        # AgentCore Runtime
+        # AgentCore Runtime with container deployment
         runtime = agentcore.CfnRuntime(
             self, "Runtime",
             agent_runtime_name="docint_agent",
             description="Document intelligence agent with Claude Sonnet",
             role_arn=role.role_arn,
             agent_runtime_artifact=agentcore.CfnRuntime.AgentRuntimeArtifactProperty(
-                code_configuration=agentcore.CfnRuntime.CodeConfigurationProperty(
-                    runtime="PYTHON_3_13",
-                    entry_point=["agent.py"],
-                    code=agentcore.CfnRuntime.CodeProperty(
-                        s3=agentcore.CfnRuntime.S3LocationProperty(
-                            bucket=agent_code.s3_bucket_name,
-                            prefix=agent_code.s3_object_key,
-                        )
-                    ),
-                )
+                container_configuration=agentcore.CfnRuntime.ContainerConfigurationProperty(
+                    container_uri=image.image_uri,
+                ),
             ),
             environment_variables={
                 "GATEWAY_URL": gateway.gateway.attr_gateway_url,
-                "MODEL_ID": "anthropic.claude-sonnet-4-20250514-v1:0",
+                "MODEL_ID": "us.anthropic.claude-sonnet-4-20250514-v1:0",
             },
             network_configuration=agentcore.CfnRuntime.NetworkConfigurationProperty(
                 network_mode="PUBLIC",

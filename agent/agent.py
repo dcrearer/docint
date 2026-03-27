@@ -4,27 +4,34 @@ import sys
 import logging
 import traceback
 
-# Log to stderr so AgentCore captures it
-logging.basicConfig(level=logging.DEBUG, stream=sys.stderr)
+logging.basicConfig(level=logging.INFO, stream=sys.stderr)
 logger = logging.getLogger(__name__)
 
 from bedrock_agentcore import BedrockAgentCoreApp
 from strands import Agent
 from strands.models import BedrockModel
-from strands.tools.mcp.mcp_client import MCPClient
-from mcp.client.streamable_http import streamablehttp_client
+from strands.tools.mcp import MCPClient
+from mcp_proxy_for_aws.client import aws_iam_streamablehttp_client
 
 app = BedrockAgentCoreApp(debug=True)
 
 GATEWAY_URL = os.environ.get("GATEWAY_URL", "")
 MODEL_ID = os.environ.get("MODEL_ID", "us.anthropic.claude-sonnet-4-20250514-v1:0")
+AWS_REGION = os.environ.get("AWS_REGION", "us-east-1")
 
 logger.info(f"GATEWAY_URL: {GATEWAY_URL}")
 logger.info(f"MODEL_ID: {MODEL_ID}")
 
 model = BedrockModel(model_id=MODEL_ID)
 
-mcp_client = MCPClient(lambda: streamablehttp_client(GATEWAY_URL)) if GATEWAY_URL else None
+# Use mcp-proxy-for-aws for SigV4-signed requests to the Gateway
+mcp_client = MCPClient(
+    lambda: aws_iam_streamablehttp_client(
+        endpoint=GATEWAY_URL,
+        aws_region=AWS_REGION,
+        aws_service="bedrock-agentcore",
+    )
+) if GATEWAY_URL else None
 
 SYSTEM_PROMPT = """You are a document intelligence assistant.
 
@@ -44,12 +51,9 @@ def invoke(payload):
         tenant_id = payload.get("tenant_id", "tenant-1")
 
         if mcp_client:
-            logger.info("Connecting to MCP gateway...")
-            with mcp_client:
-                tools = mcp_client.list_tools_sync()
-                logger.info(f"Loaded {len(tools)} tools from gateway")
-                agent = Agent(model=model, system_prompt=SYSTEM_PROMPT, tools=tools)
-                result = agent(f"[tenant_id={tenant_id}] {query}")
+            logger.info("Connecting to MCP gateway with SigV4 auth...")
+            agent = Agent(model=model, system_prompt=SYSTEM_PROMPT, tools=[mcp_client])
+            result = agent(f"[tenant_id={tenant_id}] {query}")
         else:
             logger.warning("No GATEWAY_URL set, running without tools")
             agent = Agent(model=model, system_prompt=SYSTEM_PROMPT)

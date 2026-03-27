@@ -1,5 +1,5 @@
 bedrock-agentcore
 strands-agents
 strands-agents-tools
-mcp[cli]
+mcp-proxy-for-aws
 boto3

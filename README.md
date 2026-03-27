@@ -169,6 +169,12 @@ cdk deploy --all
 
 - [ ] S3 auto-ingest: derive `tenant_id` from S3 key prefix (e.g., `tenant-2/docs/file.md` → `tenant-2`)
 - [ ] PDF ingestion support
+- [ ] Performance: tighter system prompt to reduce output tokens
+- [ ] Performance: single-turn tool use (skip tool selection LLM round-trip)
+- [ ] Performance: reduce search results returned to minimize synthesis input
+- [ ] Performance: evaluate Amazon Nova Micro/Lite as faster model alternatives
+- [ ] Performance: Lambda-based agent (eliminate AgentCore Runtime + MCP Gateway overhead)
+- [ ] Performance: query response cache (DynamoDB/ElastiCache)
 
 ## Cost Estimate (Demo)
 

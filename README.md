@@ -165,6 +165,11 @@ cdk deploy --all
 - **Claude Haiku** — faster responses (~5-7s) vs Sonnet (~15s) for interactive use
 - **S3 event-driven ingestion** — upload a file, it's automatically chunked, embedded, and stored
 
+## TODO
+
+- [ ] S3 auto-ingest: derive `tenant_id` from S3 key prefix (e.g., `tenant-2/docs/file.md` → `tenant-2`)
+- [ ] PDF ingestion support
+
 ## Cost Estimate (Demo)
 
 | Component | Monthly |

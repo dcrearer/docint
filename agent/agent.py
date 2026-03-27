@@ -1,12 +1,17 @@
 """Document Intelligence Agent — runs on AgentCore Runtime."""
 import os
-import json
-import boto3
+import logging
+from bedrock_agentcore import BedrockAgentCoreApp
 from strands import Agent
 from strands.models import BedrockModel
 
-GATEWAY_URL = os.environ["GATEWAY_URL"]
-MODEL_ID = os.environ.get("MODEL_ID", "anthropic.claude-sonnet-4-20250514-v1:0")
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+app = BedrockAgentCoreApp()
+
+GATEWAY_URL = os.environ.get("GATEWAY_URL", "")
+MODEL_ID = os.environ.get("MODEL_ID", "us.anthropic.claude-sonnet-4-20250514-v1:0")
 
 model = BedrockModel(model_id=MODEL_ID)
 
@@ -20,14 +25,19 @@ Use compare_documents to compare two documents side-by-side.
 
 Always cite sources with document titles.
 Be concise and accurate.""",
-    tools=[GATEWAY_URL],
+    tools=[GATEWAY_URL] if GATEWAY_URL else [],
 )
 
 
-def handler(event, context):
-    """Lambda-style handler for AgentCore Runtime."""
-    query = event.get("query", "")
-    tenant_id = event.get("tenant_id", "tenant-1")
+@app.entrypoint
+def invoke(payload):
+    """AgentCore Runtime entry point."""
+    query = payload.get("prompt", "")
+    tenant_id = payload.get("tenant_id", "tenant-1")
 
     result = agent(f"[tenant_id={tenant_id}] {query}")
-    return {"response": str(result)}
+    return result.message["content"][0]["text"]
+
+
+if __name__ == "__main__":
+    app.run()

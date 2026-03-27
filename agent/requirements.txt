@@ -1,4 +1,5 @@
 bedrock-agentcore
 strands-agents
-strands-agents-builder
+strands-agents-tools
+mcp[cli]
 boto3

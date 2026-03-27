@@ -4,6 +4,8 @@ import logging
 from bedrock_agentcore import BedrockAgentCoreApp
 from strands import Agent
 from strands.models import BedrockModel
+from strands.tools.mcp import MCPClient
+from mcp.client.sse import sse_client
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -15,18 +17,7 @@ MODEL_ID = os.environ.get("MODEL_ID", "us.anthropic.claude-sonnet-4-20250514-v1:
 
 model = BedrockModel(model_id=MODEL_ID)
 
-agent = Agent(
-    model=model,
-    system_prompt="""You are a document intelligence assistant.
-
-Use search_documents to find information across the document corpus.
-Use get_document_metadata to list available documents or get details.
-Use compare_documents to compare two documents side-by-side.
-
-Always cite sources with document titles.
-Be concise and accurate.""",
-    tools=[GATEWAY_URL] if GATEWAY_URL else [],
-)
+mcp = MCPClient(lambda: sse_client(GATEWAY_URL)) if GATEWAY_URL else None
 
 
 @app.entrypoint
@@ -34,6 +25,20 @@ def invoke(payload):
     """AgentCore Runtime entry point."""
     query = payload.get("prompt", "")
     tenant_id = payload.get("tenant_id", "tenant-1")
+
+    tools = [mcp] if mcp else []
+    agent = Agent(
+        model=model,
+        system_prompt="""You are a document intelligence assistant.
+
+Use search_documents to find information across the document corpus.
+Use get_document_metadata to list available documents or get details.
+Use compare_documents to compare two documents side-by-side.
+
+Always cite sources with document titles.
+Be concise and accurate.""",
+        tools=tools,
+    )
 
     result = agent(f"[tenant_id={tenant_id}] {query}")
     return result.message["content"][0]["text"]

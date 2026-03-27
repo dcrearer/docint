@@ -39,7 +39,7 @@ class AgentStack(Stack):
             agent_runtime_artifact=agentcore.CfnRuntime.AgentRuntimeArtifactProperty(
                 code_configuration=agentcore.CfnRuntime.CodeConfigurationProperty(
                     runtime="PYTHON_3_13",
-                    entry_point=["agent:handler"],
+                    entry_point=["agent.py"],
                     code=agentcore.CfnRuntime.CodeProperty(
                         s3=agentcore.CfnRuntime.S3LocationProperty(
                             bucket=agent_code.s3_bucket_name,

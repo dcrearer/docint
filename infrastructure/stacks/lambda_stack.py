@@ -4,6 +4,8 @@ from aws_cdk import (
     aws_lambda as _lambda,
     aws_iam as iam,
     aws_ec2 as ec2,
+    aws_s3 as s3,
+    aws_s3_notifications as s3n,
 )
 from constructs import Construct
 from stacks.database_stack import DatabaseStack
@@ -81,3 +83,19 @@ class LambdaStack(Stack):
             timeout=Duration.minutes(5),
             **{k: v for k, v in common.items() if k != "timeout"},
         )
+
+        # S3 bucket for document ingestion with auto-trigger
+        self.docs_bucket = s3.Bucket(
+            self, "DocsBucket",
+            bucket_name=f"docint-docs-{self.account}",
+            encryption=s3.BucketEncryption.S3_MANAGED,
+        )
+        self.docs_bucket.grant_read(role)
+
+        # Trigger ingest Lambda on supported text file uploads
+        for suffix in [".txt", ".md", ".csv", ".json", ".html", ".xml", ".yaml", ".yml", ".log", ".rst"]:
+            self.docs_bucket.add_event_notification(
+                s3.EventType.OBJECT_CREATED,
+                s3n.LambdaDestination(self.ingest_fn),
+                s3.NotificationKeyFilter(suffix=suffix),
+            )

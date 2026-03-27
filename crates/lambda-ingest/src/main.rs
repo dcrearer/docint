@@ -1,4 +1,5 @@
 //! Lambda: document ingestion pipeline.
+//! Triggered by S3 events or direct invocation.
 //! Fetches a text file from S3, splits it into chunks, generates
 //! embeddings for each chunk via Bedrock Titan, and stores everything
 //! in PostgreSQL + pgvector.
@@ -9,18 +10,61 @@ use lambda_runtime::{Error, LambdaEvent, service_fn};
 use serde::{Deserialize, Serialize};
 use tokio::sync::OnceCell;
 
+/// Direct invocation payload.
 #[derive(Deserialize)]
-struct Request {
+struct DirectRequest {
     bucket: String,
     key: String,
     tenant_id: String,
     title: Option<String>,
 }
 
+/// S3 event notification payload.
+#[derive(Deserialize)]
+struct S3Event {
+    #[serde(rename = "Records")]
+    records: Vec<S3Record>,
+}
+
+#[derive(Deserialize)]
+struct S3Record {
+    s3: S3Info,
+}
+
+#[derive(Deserialize)]
+struct S3Info {
+    bucket: S3Bucket,
+    object: S3Object,
+}
+
+#[derive(Deserialize)]
+struct S3Bucket {
+    name: String,
+}
+
+#[derive(Deserialize)]
+struct S3Object {
+    key: String,
+}
+
+/// Unified input: try S3 event first, fall back to direct invocation.
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum IngestEvent {
+    S3(S3Event),
+    Direct(DirectRequest),
+}
+
 #[derive(Serialize)]
 struct Response {
+    documents: Vec<IngestResult>,
+}
+
+#[derive(Serialize)]
+struct IngestResult {
     document_id: String,
     chunks_created: usize,
+    key: String,
 }
 
 struct AppState {
@@ -48,50 +92,72 @@ async fn get_state() -> &'static AppState {
         .await
 }
 
-async fn handler(event: LambdaEvent<Request>) -> Result<Response, Error> {
-    let req = event.payload;
-    let state = get_state().await;
-    state.store.set_tenant(&req.tenant_id).await?;
+/// Ingest a single file from S3.
+async fn ingest_file(
+    state: &AppState,
+    bucket: &str,
+    key: &str,
+    tenant_id: &str,
+    title: &str,
+) -> Result<IngestResult, Error> {
+    state.store.set_tenant(tenant_id).await?;
 
-    // Fetch text from S3
-    let obj = state
-        .s3
-        .get_object()
-        .bucket(&req.bucket)
-        .key(&req.key)
-        .send()
-        .await?;
+    let obj = state.s3.get_object().bucket(bucket).key(key).send().await?;
     let bytes = obj.body.collect().await?.into_bytes();
     let text = String::from_utf8_lossy(&bytes);
 
-    // Create document
-    let title = req.title.unwrap_or_else(|| req.key.clone());
-    let doc = state
-        .store
-        .insert_document(&req.tenant_id, &title, &req.key)
-        .await?;
+    let doc = state.store.insert_document(tenant_id, title, key).await?;
 
-    // Chunk → embed → store
     let chunks = state.chunker.chunk(&text);
     for (i, chunk) in chunks.iter().enumerate() {
         let emb = state.embedder.embed(chunk).await?;
-        state
-            .store
-            .insert_chunk(doc.id, chunk, i as i32, &emb)
-            .await?;
+        state.store.insert_chunk(doc.id, chunk, i as i32, &emb).await?;
     }
 
-    tracing::info!(
-        document_id = %doc.id,
-        chunks = chunks.len(),
-        key = %req.key,
-        "Ingested document"
-    );
+    tracing::info!(document_id = %doc.id, chunks = chunks.len(), key, "Ingested document");
 
-    Ok(Response {
+    Ok(IngestResult {
         document_id: doc.id.to_string(),
         chunks_created: chunks.len(),
+        key: key.to_string(),
     })
+}
+
+/// Derive a title from the S3 key (filename without extension).
+fn title_from_key(key: &str) -> String {
+    std::path::Path::new(key)
+        .file_stem()
+        .map(|s| s.to_string_lossy().replace('-', " "))
+        .unwrap_or_else(|| key.to_string())
+}
+
+async fn handler(event: LambdaEvent<IngestEvent>) -> Result<Response, Error> {
+    let state = get_state().await;
+    let default_tenant = std::env::var("DEFAULT_TENANT_ID").unwrap_or_else(|_| "tenant-1".into());
+
+    let results = match event.payload {
+        IngestEvent::Direct(req) => {
+            let title = req.title.unwrap_or_else(|| title_from_key(&req.key));
+            let r = ingest_file(state, &req.bucket, &req.key, &req.tenant_id, &title).await?;
+            vec![r]
+        }
+        IngestEvent::S3(s3_event) => {
+            let mut results = Vec::new();
+            for record in s3_event.records {
+                // URL-decode the key (S3 encodes spaces as +)
+                let key = record.s3.object.key.replace('+', " ");
+                let key = urlencoding::decode(&key).map(|s| s.into_owned()).unwrap_or(key);
+                let title = title_from_key(&key);
+                match ingest_file(state, &record.s3.bucket.name, &key, &default_tenant, &title).await {
+                    Ok(r) => results.push(r),
+                    Err(e) => tracing::error!(key = %key, error = %e, "Failed to ingest"),
+                }
+            }
+            results
+        }
+    };
+
+    Ok(Response { documents: results })
 }
 
 #[tokio::main]

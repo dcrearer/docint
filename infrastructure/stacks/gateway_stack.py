@@ -21,6 +21,11 @@ def _tool_target(scope, id, *, gateway, lambda_fn, tool_name, description, prope
         name=tool_name,
         description=description,
         gateway_identifier=gateway.attr_gateway_identifier,
+        credential_provider_configurations=[
+            agentcore.CfnGatewayTarget.CredentialProviderConfigurationProperty(
+                credential_provider_type="GATEWAY_IAM_ROLE",
+            )
+        ],
         target_configuration=agentcore.CfnGatewayTarget.TargetConfigurationProperty(
             mcp=agentcore.CfnGatewayTarget.McpTargetConfigurationProperty(
                 lambda_=agentcore.CfnGatewayTarget.McpLambdaTargetConfigurationProperty(

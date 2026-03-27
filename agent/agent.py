@@ -31,8 +31,7 @@ mcp_client = MCPClient(
 ) if GATEWAY_URL else None
 
 if mcp_client:
-    mcp_client.start()
-    logger.info("MCP client pre-connected at startup")
+    logger.info("MCP client configured for Gateway")
 
 SYSTEM_PROMPT = """You are a document intelligence assistant.
 

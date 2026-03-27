@@ -2,24 +2,12 @@
 
 A production-grade RAG (Retrieval-Augmented Generation) system built with:
 - **Rust Lambda functions** for vector search (5-10x faster than Python)
-- **AgentCore Runtime** hosting a Claude-powered agent
-- **AgentCore Gateway** exposing Lambda functions as MCP tools
+- **AgentCore Runtime** hosting a Claude-powered agent (container deployment, ARM64)
+- **AgentCore Gateway** exposing Lambda functions as MCP tools (SigV4 auth)
 - **PostgreSQL + pgvector** for hybrid vector + full-text search
+- **S3 auto-ingest** — drop a file, it's automatically chunked, embedded, and searchable
 
-## Architecture
-
-```
-Client → AgentCore Runtime (Claude) → AgentCore Gateway (MCP)
-                                            │
-                              ┌─────────────┼─────────────┐
-                              ▼             ▼             ▼
-                        lambda-search  lambda-metadata  lambda-compare
-                              │             │             │
-                              └─────────────┼─────────────┘
-                                            ▼
-                                   Aurora PostgreSQL
-                                     + pgvector
-```
+![Architecture](docs/architecture.png)
 
 ## Project Structure
 
@@ -37,19 +25,24 @@ docint/
 │   ├── lambda-search/          # Hybrid search Lambda
 │   ├── lambda-metadata/        # Document metadata Lambda
 │   ├── lambda-compare/         # Document comparison Lambda
-│   ├── lambda-ingest/          # S3 ingestion pipeline Lambda
-│   └── docint-cli/             # Local dev/test CLI
+│   ├── lambda-ingest/          # S3 ingestion pipeline Lambda (S3 events + direct invoke)
+│   └── docint-cli/             # Rust CLI client for querying the agent
 ├── agent/
-│   ├── agent.py                # Strands agent (Claude + Gateway tools)
+│   ├── agent.py                # Strands agent (Claude Haiku + Gateway tools via mcp-proxy-for-aws)
+│   ├── Dockerfile              # ARM64 container for AgentCore Runtime
 │   └── requirements.txt
 ├── infrastructure/             # CDK (Python)
 │   ├── app.py                  # 5 stacks wired together
 │   └── stacks/
 │       ├── database_stack.py   # Aurora Serverless v2 + VPC endpoints
-│       ├── lambda_stack.py     # 4 Lambdas (VPC, X-Ray, IAM)
+│       ├── lambda_stack.py     # 4 Lambdas (VPC, X-Ray, IAM) + S3 bucket with event triggers
 │       ├── gateway_stack.py    # AgentCore Gateway + MCP tool targets
-│       ├── agent_stack.py      # AgentCore Runtime + Endpoint
+│       ├── agent_stack.py      # AgentCore Runtime (container) + Endpoint + keep-warm
 │       └── monitoring_stack.py # CloudWatch dashboard + alarms
+├── docs/
+│   ├── architecture.png        # Architecture diagram
+│   ├── architecture.svg        # Scalable version
+│   └── architecture.md         # Mermaid source
 ├── migrations/                 # SQL migrations (sqlx)
 ├── local/                      # Podman compose + test events
 ├── .github/workflows/ci.yml   # CI/CD pipeline
@@ -66,6 +59,38 @@ docint/
 - cargo-lambda (`cargo install cargo-lambda`)
 - AWS CDK (`npm install -g aws-cdk`)
 
+## Quick Start — Query the Agent
+
+```bash
+# Set your runtime ARN (from CDK output)
+export DOCINT_RUNTIME_ARN="arn:aws:bedrock-agentcore:us-east-1:<ACCOUNT_ID>:runtime/<RUNTIME_ID>"
+
+# Ask a question
+cargo run --bin docint-cli -- "How does autoscaling work in EKS?"
+
+# Specify a tenant
+cargo run --bin docint-cli -- -t tenant-2 "What documents do you have?"
+```
+
+## Ingest Documents
+
+Upload files to the S3 bucket — they're automatically ingested:
+
+```bash
+aws s3 cp my-notes.md s3://docint-docs-<ACCOUNT_ID>/notes/
+```
+
+Supported formats: `.txt` `.md` `.csv` `.json` `.html` `.xml` `.yaml` `.yml` `.log` `.rst`
+
+Or invoke the ingest Lambda directly:
+
+```bash
+aws lambda invoke --function-name docint-ingest \
+  --cli-binary-format raw-in-base64-out \
+  --payload '{"bucket":"docint-docs-<ACCOUNT_ID>","key":"docs/guide.txt","tenant_id":"tenant-1","title":"My Guide"}' \
+  /tmp/out.json
+```
+
 ## Local Development
 
 ```bash
@@ -80,8 +105,12 @@ sqlx migrate run --source migrations
 cargo build --workspace
 cargo test --lib --workspace
 
-# 4. Run the CLI (seeds data + searches)
-cargo run --bin docint-cli
+# 4. Test the agent locally (requires AWS credentials)
+cd agent && python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+export GATEWAY_URL="https://<GATEWAY_ID>.gateway.bedrock-agentcore.us-east-1.amazonaws.com/mcp"
+export MODEL_ID="us.anthropic.claude-haiku-4-5-20251001-v1:0"
+python3 -c "from agent import invoke; print(invoke({'prompt':'What documents do you have?','tenant_id':'tenant-1'}))"
 
 # 5. Test a Lambda locally
 cargo lambda watch --invoke-port 9001 &
@@ -109,16 +138,14 @@ cdk deploy -a "python3 bootstrap_github_oidc.py"
 
 Push to `main` triggers the GitHub Actions pipeline:
 1. **Test** — `cargo test --lib --workspace`
-2. **Build** — `cargo lambda build --release --arm64`
+2. **Build** — `cargo lambda build --release --arm64` + Docker image (QEMU cross-compile)
 3. **Deploy** — `cdk deploy --all`
 
 ### Manual deploy
 
 ```bash
-# Build Lambdas (on Linux, or use Dockerfile.lambda on macOS)
 cargo lambda build --release --arm64 --workspace
 
-# Deploy all stacks
 cd infrastructure
 source .venv/bin/activate
 pip install -r requirements.txt
@@ -132,6 +159,11 @@ cdk deploy --all
 - **VPC endpoints instead of NAT** — saves ~$32/month while keeping Lambdas in isolated subnets
 - **OnceCell for Lambda state** — DB pool and embedder initialize once on cold start, reused across invocations
 - **Standalone Embedder** — decoupled from VectorStore so ingestion and search can share it independently
+- **Container-based agent** — ARM64 Docker image for AgentCore Runtime avoids cold start timeouts
+- **SigV4 Gateway auth** — `mcp-proxy-for-aws` handles IAM signing for MCP connections
+- **Keep-warm ping** — CloudWatch Events rule pings the agent every 5 minutes to avoid cold starts
+- **Claude Haiku** — faster responses (~5-7s) vs Sonnet (~15s) for interactive use
+- **S3 event-driven ingestion** — upload a file, it's automatically chunked, embedded, and stored
 
 ## Cost Estimate (Demo)
 
@@ -140,7 +172,8 @@ cdk deploy --all
 | Aurora Serverless v2 (min capacity) | ~$15 |
 | Lambda (1K invocations) | ~$0.50 |
 | AgentCore Runtime (1K) | ~$2 |
-| Bedrock Claude (1K conversations) | ~$3 |
+| Bedrock Claude Haiku (1K conversations) | ~$1 |
 | Bedrock Embeddings | ~$0.30 |
 | VPC Endpoints | ~$21 |
-| **Total** | **~$42** |
+| S3 (document storage) | ~$0.02 |
+| **Total** | **~$40** |

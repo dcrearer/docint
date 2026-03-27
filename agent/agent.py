@@ -16,15 +16,12 @@ from mcp_proxy_for_aws.client import aws_iam_streamablehttp_client
 app = BedrockAgentCoreApp(debug=True)
 
 GATEWAY_URL = os.environ.get("GATEWAY_URL", "")
-MODEL_ID = os.environ.get("MODEL_ID", "us.anthropic.claude-sonnet-4-20250514-v1:0")
+MODEL_ID = os.environ.get("MODEL_ID", "us.anthropic.claude-haiku-4-5-20251001-v1:0")
 AWS_REGION = os.environ.get("AWS_REGION", "us-east-1")
-
-logger.info(f"GATEWAY_URL: {GATEWAY_URL}")
-logger.info(f"MODEL_ID: {MODEL_ID}")
 
 model = BedrockModel(model_id=MODEL_ID)
 
-# Use mcp-proxy-for-aws for SigV4-signed requests to the Gateway
+# Pre-connect MCP client at module level — reused across invocations
 mcp_client = MCPClient(
     lambda: aws_iam_streamablehttp_client(
         endpoint=GATEWAY_URL,
@@ -32,6 +29,10 @@ mcp_client = MCPClient(
         aws_service="bedrock-agentcore",
     )
 ) if GATEWAY_URL else None
+
+if mcp_client:
+    mcp_client.start()
+    logger.info("MCP client pre-connected at startup")
 
 SYSTEM_PROMPT = """You are a document intelligence assistant.
 
@@ -41,24 +42,21 @@ Use compare_documents to compare two documents side-by-side.
 
 Always cite sources with document titles. Be concise and accurate."""
 
+# Pre-build agent once — reused across invocations
+agent = Agent(
+    model=model,
+    system_prompt=SYSTEM_PROMPT,
+    tools=[mcp_client] if mcp_client else [],
+)
+
 
 @app.entrypoint
 def invoke(payload):
     """AgentCore Runtime entry point."""
     try:
-        logger.info(f"Received payload: {payload}")
         query = payload.get("prompt", "")
         tenant_id = payload.get("tenant_id", "tenant-1")
-
-        if mcp_client:
-            logger.info("Connecting to MCP gateway with SigV4 auth...")
-            agent = Agent(model=model, system_prompt=SYSTEM_PROMPT, tools=[mcp_client])
-            result = agent(f"[tenant_id={tenant_id}] {query}")
-        else:
-            logger.warning("No GATEWAY_URL set, running without tools")
-            agent = Agent(model=model, system_prompt=SYSTEM_PROMPT)
-            result = agent(f"[tenant_id={tenant_id}] {query}")
-
+        result = agent(f"[tenant_id={tenant_id}] {query}")
         return result.message["content"][0]["text"]
     except Exception as e:
         logger.error(f"Agent error: {e}")

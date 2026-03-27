@@ -1,9 +1,13 @@
 from aws_cdk import (
     Stack,
     CfnOutput,
+    Duration,
     aws_bedrockagentcore as agentcore,
     aws_iam as iam,
     aws_ecr_assets as ecr_assets,
+    aws_events as events,
+    aws_events_targets as targets,
+    aws_lambda as _lambda,
 )
 from constructs import Construct
 from stacks.gateway_stack import GatewayStack
@@ -87,7 +91,7 @@ class AgentStack(Stack):
             ),
             environment_variables={
                 "GATEWAY_URL": gateway.gateway.attr_gateway_url,
-                "MODEL_ID": "us.anthropic.claude-sonnet-4-20250514-v1:0",
+                "MODEL_ID": "us.anthropic.claude-haiku-4-5-20251001-v1:0",
             },
             network_configuration=agentcore.CfnRuntime.NetworkConfigurationProperty(
                 network_mode="PUBLIC",
@@ -107,3 +111,37 @@ class AgentStack(Stack):
 
         CfnOutput(self, "RuntimeId", value=runtime.attr_agent_runtime_id)
         CfnOutput(self, "EndpointArn", value=endpoint.attr_agent_runtime_endpoint_arn)
+
+        # Keep-warm: ping the agent every 5 minutes to avoid cold starts
+        warm_fn = _lambda.Function(
+            self, "KeepWarmFn",
+            function_name="docint-agent-keepwarm",
+            runtime=_lambda.Runtime.PYTHON_3_13,
+            handler="index.handler",
+            code=_lambda.Code.from_inline(
+                "import boto3, json, base64\n"
+                "client = boto3.client('bedrock-agentcore')\n"
+                "def handler(event, context):\n"
+                "    client.invoke_agent_runtime(\n"
+                "        agentRuntimeArn=event['arn'],\n"
+                "        qualifier=event.get('endpoint', 'docint_agent_endpoint'),\n"
+                "        payload=base64.b64encode(json.dumps({'prompt':'ping','tenant_id':'system'}).encode()),\n"
+                "    )\n"
+            ),
+        )
+        warm_fn.add_to_role_policy(iam.PolicyStatement(
+            actions=["bedrock-agentcore:InvokeAgentRuntime"],
+            resources=[f"arn:aws:bedrock-agentcore:{self.region}:{self.account}:runtime/*"],
+        ))
+
+        rule = events.Rule(
+            self, "KeepWarmRule",
+            schedule=events.Schedule.rate(Duration.minutes(5)),
+        )
+        rule.add_target(targets.LambdaFunction(
+            warm_fn,
+            event=events.RuleTargetInput.from_object({
+                "arn": runtime.attr_agent_runtime_arn,
+                "endpoint": "docint_agent_endpoint",
+            }),
+        ))

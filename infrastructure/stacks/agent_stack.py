@@ -31,7 +31,6 @@ class AgentStack(Stack):
         image = ecr_assets.DockerImageAsset(
             self, "AgentImage",
             directory="../agent",
-            platform=ecr_assets.Platform.LINUX_ARM64,
         )
 
         # AgentCore Runtime with container deployment

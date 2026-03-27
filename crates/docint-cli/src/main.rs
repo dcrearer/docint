@@ -1,44 +1,59 @@
-use anyhow::Result;
-use docint_core::{db, embeddings::Embedder, store::VectorStore};
-use uuid::Uuid;
+use anyhow::{Context, Result};
+use aws_sdk_bedrockagentcore::primitives::Blob;
+use clap::Parser;
+use serde::Serialize;
+
+#[derive(Parser)]
+#[command(name = "docint", about = "Query the Document Intelligence agent")]
+struct Cli {
+    /// The question to ask the agent
+    prompt: String,
+
+    /// Tenant ID for multi-tenant isolation
+    #[arg(short, long, default_value = "tenant-1")]
+    tenant: String,
+
+    /// Agent runtime ARN
+    #[arg(long, env("DOCINT_RUNTIME_ARN"))]
+    runtime_arn: String,
+
+    /// Endpoint qualifier
+    #[arg(long, env("DOCINT_ENDPOINT"), default_value = "docint_agent_endpoint")]
+    endpoint: String,
+}
+
+#[derive(Serialize)]
+struct Request {
+    prompt: String,
+    tenant_id: String,
+}
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let database_url = std::env::var("DATABASE_URL")
-        .unwrap_or_else(|_| "postgres://docint:docint_local@localhost:5432/docint".into());
+    let cli = Cli::parse();
 
-    let pool = db::create_pool(&database_url).await?;
-    let store = VectorStore::new(pool);
-    let embedder = Embedder::new().await;
+    let config = aws_config::load_defaults(aws_config::BehaviorVersion::latest()).await;
+    let client = aws_sdk_bedrockagentcore::Client::new(&config);
 
-    let doc_a: Uuid = "aaaaaaaa-0000-0000-0000-000000000001".parse()?;
-    let doc_b: Uuid = "bbbbbbbb-0000-0000-0000-000000000002".parse()?;
+    let payload = serde_json::to_vec(&Request {
+        prompt: cli.prompt,
+        tenant_id: cli.tenant,
+    })?;
 
-    let rust_chunks = [
-        "Rust uses ownership and borrowing to manage memory safely at compile time.",
-        "Rust achieves concurrency safety through the Send and Sync traits.",
-        "Error handling in Rust uses Result and Option types for explicit control flow.",
-    ];
-    let go_chunks = [
-        "Go uses garbage collection for automatic memory management.",
-        "Go achieves concurrency through goroutines and channels for message passing.",
-        "Error handling in Go uses explicit error return values checked with if err != nil.",
-    ];
+    let resp = client
+        .invoke_agent_runtime()
+        .agent_runtime_arn(&cli.runtime_arn)
+        .qualifier(&cli.endpoint)
+        .payload(Blob::new(payload))
+        .send()
+        .await
+        .context("Failed to invoke agent")?;
 
-    println!("--- Embedding Rust chunks ---");
-    for (i, text) in rust_chunks.iter().enumerate() {
-        let emb = embedder.embed(text).await?;
-        store.insert_chunk(doc_a, text, i as i32, &emb).await?;
-        println!("  Chunk {}: {}", i, text);
-    }
+    let bytes = resp.response.collect().await?.into_bytes();
+    let output = String::from_utf8_lossy(&bytes);
+    // Strip surrounding quotes if present
+    let output = output.trim().trim_matches('"');
+    println!("{output}");
 
-    println!("--- Embedding Go chunks ---");
-    for (i, text) in go_chunks.iter().enumerate() {
-        let emb = embedder.embed(text).await?;
-        store.insert_chunk(doc_b, text, i as i32, &emb).await?;
-        println!("  Chunk {}: {}", i, text);
-    }
-
-    println!("\nDone. Doc A = {doc_a}, Doc B = {doc_b}");
     Ok(())
 }

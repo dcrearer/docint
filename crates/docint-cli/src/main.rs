@@ -3,6 +3,7 @@ use aws_sdk_bedrockagentcore::primitives::Blob;
 use clap::Parser;
 use serde::Serialize;
 use std::io::{self, Write};
+use tokio::io::AsyncReadExt;
 
 #[derive(Parser)]
 #[command(name = "docint", about = "Query the Document Intelligence agent")]
@@ -29,6 +30,30 @@ struct Request {
     tenant_id: String,
 }
 
+/// Stream bytes to stdout, unescaping \\n → newline and \\\" → quote,
+/// stripping a leading/trailing double-quote wrapper.
+fn stream_unescape(raw: &[u8], stdout: &mut impl Write) -> io::Result<()> {
+    let s = std::str::from_utf8(raw).unwrap_or("");
+    // Strip wrapping quotes on first/last chunk
+    let s = s.strip_prefix('"').unwrap_or(s);
+    let s = s.strip_suffix('"').unwrap_or(s);
+
+    let mut chars = s.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c == '\\' {
+            match chars.peek() {
+                Some('n') => { chars.next(); write!(stdout, "\n")?; }
+                Some('"') => { chars.next(); write!(stdout, "\"")?; }
+                Some('\\') => { chars.next(); write!(stdout, "\\")?; }
+                _ => write!(stdout, "\\")?,
+            }
+        } else {
+            write!(stdout, "{c}")?;
+        }
+    }
+    stdout.flush()
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     let cli = Cli::parse();
@@ -50,15 +75,16 @@ async fn main() -> Result<()> {
         .await
         .context("Failed to invoke agent")?;
 
-    let bytes = resp.response.collect().await?.into_bytes();
-    let raw = String::from_utf8_lossy(&bytes);
-
-    // Strip surrounding quotes and unescape
-    let clean = raw.trim().trim_matches('"');
-    let clean = clean.replace("\\n", "\n").replace("\\\"", "\"");
-
     let mut stdout = io::stdout().lock();
-    write!(stdout, "{clean}")?;
+    let mut stream = resp.response.into_async_read();
+    let mut buf = [0u8; 256];
+    loop {
+        let n = stream.read(&mut buf).await?;
+        if n == 0 {
+            break;
+        }
+        stream_unescape(&buf[..n], &mut stdout)?;
+    }
     writeln!(stdout)?;
 
     Ok(())

@@ -48,7 +48,7 @@ class LambdaStack(Stack):
             role=role,
             memory_size=512,
             timeout=Duration.seconds(30),
-            environment={"DATABASE_URL": db_url},
+            environment={"DATABASE_URL": db_url, "RUST_LOG": "info"},
             vpc=database.vpc,
             vpc_subnets=ec2.SubnetSelection(subnet_type=ec2.SubnetType.PRIVATE_ISOLATED),
             security_groups=[lambda_sg],

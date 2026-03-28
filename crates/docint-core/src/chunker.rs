@@ -5,6 +5,9 @@
 /// Approximate chars per token — used to convert token targets to char targets.
 const CHARS_PER_TOKEN: usize = 4;
 
+/// Hard ceiling: Titan Embed v2 accepts max 8,192 tokens. Stay well under.
+const MAX_CHUNK_CHARS: usize = 6000 * CHARS_PER_TOKEN;
+
 pub struct Chunker {
     chunk_size: usize,  // in chars
     overlap: usize,     // in chars
@@ -71,7 +74,29 @@ impl Chunker {
             start = next_start;
         }
 
-        chunks.into_iter().filter(|c| !c.is_empty()).collect()
+        // Hard-split any chunk exceeding Titan's token limit
+        let mut safe_chunks = Vec::new();
+        for chunk in chunks.into_iter().filter(|c| !c.is_empty()) {
+            if chunk.len() <= MAX_CHUNK_CHARS {
+                safe_chunks.push(chunk);
+            } else {
+                let mut pos = 0;
+                while pos < chunk.len() {
+                    let end = (pos + MAX_CHUNK_CHARS).min(chunk.len());
+                    let break_at = if end == chunk.len() {
+                        end
+                    } else {
+                        chunk[pos..end].rfind(char::is_whitespace).map(|i| pos + i + 1).unwrap_or(end)
+                    };
+                    let s = chunk[pos..break_at].trim();
+                    if !s.is_empty() {
+                        safe_chunks.push(s);
+                    }
+                    pos = break_at;
+                }
+            }
+        }
+        safe_chunks
     }
 }
 

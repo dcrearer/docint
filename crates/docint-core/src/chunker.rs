@@ -75,28 +75,33 @@ impl Chunker {
     }
 }
 
-/// Split text into sentences at '.', '!', '?' followed by whitespace.
+/// Split text into sentences at '.', '!', '?' followed by whitespace,
+/// or at newlines (handles CSV, logs, and structured text).
 fn split_sentences(text: &str) -> Vec<&str> {
     let mut sentences = Vec::new();
     let mut start = 0;
     let bytes = text.as_bytes();
 
     for i in 0..bytes.len() {
-        if matches!(bytes[i], b'.' | b'!' | b'?') {
-            // Check if next char is whitespace or end of text
-            let is_boundary = if i + 1 >= bytes.len() {
+        let is_boundary = if bytes[i] == b'\n' {
+            true
+        } else if matches!(bytes[i], b'.' | b'!' | b'?') {
+            if i + 1 >= bytes.len() {
                 true
             } else {
                 bytes[i + 1].is_ascii_whitespace()
-            };
-            if is_boundary {
-                let end = i + 1;
-                let s = text[start..end].trim();
-                if !s.is_empty() {
-                    sentences.push(s);
-                }
-                start = end;
             }
+        } else {
+            false
+        };
+
+        if is_boundary {
+            let end = i + 1;
+            let s = text[start..end].trim();
+            if !s.is_empty() {
+                sentences.push(s);
+            }
+            start = end;
         }
     }
 

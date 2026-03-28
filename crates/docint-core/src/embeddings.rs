@@ -60,7 +60,7 @@ impl Embedder {
             .body(Blob::new(body))
             .send()
             .await
-            .context("Bedrock InvokeModel failed")?;
+            .context(format!("Bedrock InvokeModel failed (text_len={})", text.len()))?;
 
         let parsed: TitanResponse =
             serde_json::from_slice(resp.body().as_ref()).context("Failed to parse Titan response")?;

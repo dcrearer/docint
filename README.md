@@ -37,7 +37,7 @@ docint/
 │       ├── database_stack.py   # Aurora Serverless v2 + VPC endpoints
 │       ├── lambda_stack.py     # 4 Lambdas (VPC, X-Ray, IAM) + S3 bucket with event triggers
 │       ├── gateway_stack.py    # AgentCore Gateway + MCP tool targets
-│       ├── agent_stack.py      # AgentCore Runtime (container) + Endpoint + keep-warm
+│       ├── agent_stack.py      # AgentCore Runtime (container) + Endpoint
 │       └── monitoring_stack.py # CloudWatch dashboard + alarms
 ├── docs/ 
 │   └── architecture.png        # Architecture diagram
@@ -160,7 +160,6 @@ cdk deploy --all
 - **Standalone Embedder** — decoupled from VectorStore so ingestion and search can share it independently
 - **Container-based agent** — ARM64 Docker image for AgentCore Runtime avoids cold start timeouts
 - **SigV4 Gateway auth** — `mcp-proxy-for-aws` handles IAM signing for MCP connections
-- **Keep-warm ping** — CloudWatch Events rule pings the agent every 5 minutes to avoid cold starts
 - **Claude Haiku** — faster responses (~5-7s) vs Sonnet (~15s) for interactive use
 - **S3 event-driven ingestion** — upload a file, it's automatically chunked, embedded, and stored
 

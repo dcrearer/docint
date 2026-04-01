@@ -45,9 +45,18 @@ fn stream_unescape(raw: &[u8], stdout: &mut impl Write) -> io::Result<()> {
     while let Some(c) = chars.next() {
         if c == '\\' {
             match chars.peek() {
-                Some('n') => { chars.next(); write!(stdout, "\n")?; }
-                Some('"') => { chars.next(); write!(stdout, "\"")?; }
-                Some('\\') => { chars.next(); write!(stdout, "\\")?; }
+                Some('n') => {
+                    chars.next();
+                    write!(stdout, "\n")?;
+                }
+                Some('"') => {
+                    chars.next();
+                    write!(stdout, "\"")?;
+                }
+                Some('\\') => {
+                    chars.next();
+                    write!(stdout, "\\")?;
+                }
                 _ => write!(stdout, "\\")?,
             }
         } else {
@@ -112,16 +121,24 @@ async fn main() -> Result<()> {
         stream_unescape(&buf[..n], &mut stdout)?;
     }
     let stream_time = t2.elapsed();
-    writeln!(stdout)?;
 
     if cli.timing {
         let total = total_start.elapsed();
         eprintln!();
         eprintln!("--- Timing ---");
-        eprintln!("  SDK init:       {:>7.1}ms", sdk_init.as_secs_f64() * 1000.0);
-        eprintln!("  Agent response: {:>7.1}ms", agent_latency.as_secs_f64() * 1000.0);
+        eprintln!(
+            "  SDK init:       {:>7.1}ms",
+            sdk_init.as_secs_f64() * 1000.0
+        );
+        eprintln!(
+            "  Agent response: {:>7.1}ms",
+            agent_latency.as_secs_f64() * 1000.0
+        );
         eprintln!("  Stream TTFB:    {:>7.1}ms", ttfb.as_secs_f64() * 1000.0);
-        eprintln!("  Stream total:   {:>7.1}ms", stream_time.as_secs_f64() * 1000.0);
+        eprintln!(
+            "  Stream total:   {:>7.1}ms",
+            stream_time.as_secs_f64() * 1000.0
+        );
         eprintln!("  Total:          {:>7.1}ms", total.as_secs_f64() * 1000.0);
     }
 

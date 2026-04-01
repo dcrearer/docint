@@ -39,10 +39,8 @@ docint/
 │       ├── gateway_stack.py    # AgentCore Gateway + MCP tool targets
 │       ├── agent_stack.py      # AgentCore Runtime (container) + Endpoint + keep-warm
 │       └── monitoring_stack.py # CloudWatch dashboard + alarms
-├── docs/
-│   ├── architecture.png        # Architecture diagram
-│   ├── architecture.svg        # Scalable version
-│   └── architecture.md         # Mermaid source
+├── docs/ 
+│   └── architecture.png        # Architecture diagram
 ├── migrations/                 # SQL migrations (sqlx)
 ├── local/                      # Podman compose + test events
 ├── .github/workflows/ci.yml   # CI/CD pipeline
@@ -155,6 +153,7 @@ cdk deploy --all
 ## Key Design Decisions
 
 - **Hybrid search with RRF** — combines vector similarity and PostgreSQL full-text search for better recall than either alone
+- **RRF stands for Reciprocal Rank Fusion** — combines two different search strategies into one ranked result set.
 - **Row-level security** — PostgreSQL enforces tenant isolation at the DB level, not just application code
 - **VPC endpoints instead of NAT** — saves ~$32/month while keeping Lambdas in isolated subnets
 - **OnceCell for Lambda state** — DB pool and embedder initialize once on cold start, reused across invocations
@@ -167,14 +166,31 @@ cdk deploy --all
 
 ## TODO
 
+### Conversational Memory (AgentCore Memory)
+
+- [ ] Infrastructure: add AgentCore Memory resource to `agent_stack.py` (semantic strategy, 30-day event expiry)
+- [ ] Infrastructure: pass `MEMORY_ID` env var to agent container + IAM permissions for memory data plane
+- [ ] Agent: add `bedrock-agentcore` to `requirements.txt`, initialize `MemoryClient` at module level
+- [ ] Agent: retrieve memories before LLM call, inject into context
+- [ ] Agent: write conversation events after LLM response (`actor_id` + `session_id` from payload)
+- [ ] Agent: handle empty memory (first conversation) and write failures gracefully
+- [ ] CLI: add `--chat` flag for interactive REPL mode with streaming responses
+- [ ] CLI: add `--actor` flag, generate `session_id` per session, include both in payload
+- [ ] Test: verify cross-session memory retrieval, tenant isolation, failure resilience
+- [ ] Docs: update README with `--chat` usage, `MEMORY_ID` env var, architecture diagram
+
+### Ingestion
+
 - [ ] S3 auto-ingest: derive `tenant_id` from S3 key prefix (e.g., `tenant-2/docs/file.md` → `tenant-2`)
-- [ ] PDF ingestion support
-- [ ] Performance: tighter system prompt to reduce output tokens
-- [ ] Performance: single-turn tool use (skip tool selection LLM round-trip)
-- [ ] Performance: reduce search results returned to minimize synthesis input
-- [ ] Performance: evaluate Amazon Nova Micro/Lite as faster model alternatives
-- [ ] Performance: Lambda-based agent (eliminate AgentCore Runtime + MCP Gateway overhead)
-- [ ] Performance: query response cache (DynamoDB/ElastiCache)
+
+### Performance
+
+- [ ] Tighter system prompt to reduce output tokens
+- [ ] Single-turn tool use (skip tool selection LLM round-trip)
+- [ ] Reduce search results returned to minimize synthesis input
+- [ ] Evaluate Amazon Nova Micro/Lite as faster model alternatives
+- [ ] Lambda-based agent (eliminate AgentCore Runtime + MCP Gateway overhead)
+- [ ] Query response cache (DynamoDB/ElastiCache)
 
 ## Cost Estimate (Demo)
 

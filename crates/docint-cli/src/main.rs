@@ -5,7 +5,7 @@ use indicatif::{ProgressBar, ProgressStyle};
 use serde::Serialize;
 use std::io::{self, Write};
 use std::time::Instant;
-use tokio::io::AsyncReadExt;
+use tokio::io::{AsyncBufReadExt, BufReader};
 
 #[derive(Parser)]
 #[command(name = "docint", about = "Query the Document Intelligence agent")]
@@ -36,34 +36,14 @@ struct Request {
     tenant_id: String,
 }
 
-fn stream_unescape(raw: &[u8], stdout: &mut impl Write) -> io::Result<()> {
-    let s = std::str::from_utf8(raw).unwrap_or("");
-    let s = s.strip_prefix('"').unwrap_or(s);
-    let s = s.strip_suffix('"').unwrap_or(s);
-
-    let mut chars = s.chars().peekable();
-    while let Some(c) = chars.next() {
-        if c == '\\' {
-            match chars.peek() {
-                Some('n') => {
-                    chars.next();
-                    write!(stdout, "\n")?;
-                }
-                Some('"') => {
-                    chars.next();
-                    write!(stdout, "\"")?;
-                }
-                Some('\\') => {
-                    chars.next();
-                    write!(stdout, "\\")?;
-                }
-                _ => write!(stdout, "\\")?,
-            }
-        } else {
-            write!(stdout, "{c}")?;
-        }
+/// Extract text from an SSE data line, unescaping JSON string content.
+fn extract_sse_text(line: &str) -> Option<String> {
+    let payload = line.strip_prefix("data: ")?;
+    // Try JSON string first (e.g. data: "some text")
+    if let Ok(text) = serde_json::from_str::<String>(payload) {
+        return Some(text);
     }
-    stdout.flush()
+    None
 }
 
 #[tokio::main]
@@ -105,22 +85,28 @@ async fn main() -> Result<()> {
 
     let t2 = Instant::now();
     let mut stdout = io::stdout().lock();
-    let mut stream = resp.response.into_async_read();
-    let mut buf = [0u8; 256];
+    let mut reader = BufReader::new(resp.response.into_async_read());
+    let mut line = String::new();
     let mut first_byte = true;
     let mut ttfb = std::time::Duration::ZERO;
+
     loop {
-        let n = stream.read(&mut buf).await?;
+        line.clear();
+        let n = reader.read_line(&mut line).await?;
         if n == 0 {
             break;
         }
-        if first_byte {
-            ttfb = t2.elapsed();
-            first_byte = false;
+        if let Some(text) = extract_sse_text(line.trim()) {
+            if first_byte {
+                ttfb = t2.elapsed();
+                first_byte = false;
+            }
+            write!(stdout, "{text}")?;
+            stdout.flush()?;
         }
-        stream_unescape(&buf[..n], &mut stdout)?;
     }
     let stream_time = t2.elapsed();
+    writeln!(stdout)?;
 
     if cli.timing {
         let total = total_start.elapsed();

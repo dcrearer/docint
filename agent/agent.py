@@ -51,13 +51,13 @@ agent = Agent(
 
 @app.entrypoint
 async def invoke(payload):
-    """AgentCore Runtime entry point — streams tokens back to caller."""
+    """AgentCore Runtime entry point — streams text tokens back to caller."""
     try:
         query = payload.get("prompt", "")
         tenant_id = payload.get("tenant_id", "tenant-1")
-        stream = agent.stream_async(f"[tenant_id={tenant_id}] {query}")
-        async for event in stream:
-            yield event
+        async for event in agent.stream_async(f"[tenant_id={tenant_id}] {query}"):
+            if isinstance(event, dict) and "data" in event:
+                yield event["data"]
     except Exception as e:
         logger.error(f"Agent error: {e}")
         logger.error(traceback.format_exc())

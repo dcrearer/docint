@@ -131,6 +131,12 @@ fn title_from_key(key: &str) -> String {
         .unwrap_or_else(|| key.to_string())
 }
 
+/// Derive tenant_id from S3 key prefix: "tenant-2/docs/file.md" → "tenant-2".
+/// Falls back to default if key has no prefix or prefix is empty.
+fn tenant_from_key<'a>(key: &'a str, default: &'a str) -> &'a str {
+    key.split('/').next().filter(|s| !s.is_empty() && s.contains("tenant")).unwrap_or(default)
+}
+
 async fn handler(event: LambdaEvent<IngestEvent>) -> Result<Response, Error> {
     let state = get_state().await;
     let default_tenant = std::env::var("DEFAULT_TENANT_ID").unwrap_or_else(|_| "tenant-1".into());
@@ -147,8 +153,9 @@ async fn handler(event: LambdaEvent<IngestEvent>) -> Result<Response, Error> {
                 // URL-decode the key (S3 encodes spaces as +)
                 let key = record.s3.object.key.replace('+', " ");
                 let key = urlencoding::decode(&key).map(|s| s.into_owned()).unwrap_or(key);
+                let tenant_id = tenant_from_key(&key, &default_tenant);
                 let title = title_from_key(&key);
-                match ingest_file(state, &record.s3.bucket.name, &key, &default_tenant, &title).await {
+                match ingest_file(state, &record.s3.bucket.name, &key, tenant_id, &title).await {
                     Ok(r) => results.push(r),
                     Err(e) => tracing::error!(key = %key, error = %e, "Failed to ingest"),
                 }

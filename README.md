@@ -37,7 +37,7 @@ docint/
 │       ├── database_stack.py   # Aurora Serverless v2 + VPC endpoints
 │       ├── lambda_stack.py     # 4 Lambdas (VPC, X-Ray, IAM) + S3 bucket with event triggers
 │       ├── gateway_stack.py    # AgentCore Gateway + MCP tool targets
-│       ├── agent_stack.py      # AgentCore Runtime (container) + Endpoint
+│       ├── agent_stack.py      # AgentCore Runtime (container) + Endpoint + Memory
 │       └── monitoring_stack.py # CloudWatch dashboard + alarms
 ├── docs/ 
 │   └── architecture.png        # Architecture diagram
@@ -68,14 +68,27 @@ cargo run --bin docint-cli -- "How does autoscaling work in EKS?"
 
 # Specify a tenant
 cargo run --bin docint-cli -- -t tenant-2 "What documents do you have?"
+
+# Interactive chat mode (session memory persists across turns)
+cargo run --bin docint-cli -- --chat
+
+# Chat as a specific actor/tenant
+cargo run --bin docint-cli -- --chat -t tenant-2 --actor user-alice
 ```
 
 ## Ingest Documents
 
-Upload files to the S3 bucket — they're automatically ingested:
+Upload files to the S3 bucket — they're automatically ingested. Tenant is derived from the key prefix:
 
 ```bash
-aws s3 cp my-notes.md s3://docint-docs-<ACCOUNT_ID>/notes/
+# Ingest under tenant-1
+aws s3 cp my-notes.md s3://docint-docs-<ACCOUNT_ID>/tenant-1/notes/
+
+# Ingest under tenant-2
+aws s3 cp report.md s3://docint-docs-<ACCOUNT_ID>/tenant-2/docs/
+
+# Files without a tenant prefix fall back to DEFAULT_TENANT_ID (default: tenant-1)
+aws s3 cp misc.txt s3://docint-docs-<ACCOUNT_ID>/misc/
 ```
 
 Supported formats: `.txt` `.md` `.csv` `.json` `.html` `.xml` `.yaml` `.yml` `.log` `.rst`
@@ -162,25 +175,25 @@ cdk deploy --all
 - **SigV4 Gateway auth** — `mcp-proxy-for-aws` handles IAM signing for MCP connections
 - **Claude Haiku** — faster responses (~5-7s) vs Sonnet (~15s) for interactive use
 - **S3 event-driven ingestion** — upload a file, it's automatically chunked, embedded, and stored
+- **Tenant-from-key derivation** — S3 key prefix (e.g., `tenant-2/docs/file.md`) determines tenant_id automatically
+- **Conversational memory** — AgentCore Memory with semantic, summary, and user preference strategies for cross-session recall
 
 ## TODO
 
 ### Conversational Memory (AgentCore Memory)
 
-- [ ] Infrastructure: add AgentCore Memory resource to `agent_stack.py` (semantic strategy, 30-day event expiry)
-- [ ] Infrastructure: pass `MEMORY_ID` env var to agent container + IAM permissions for memory data plane
-- [ ] Agent: add `bedrock-agentcore` to `requirements.txt`, initialize `MemoryClient` at module level
-- [ ] Agent: retrieve memories before LLM call, inject into context
-- [ ] Agent: write conversation events after LLM response (`actor_id` + `session_id` from payload)
-- [ ] Agent: handle empty memory (first conversation) and write failures gracefully
-- [ ] CLI: add `--chat` flag for interactive REPL mode with streaming responses
-- [ ] CLI: add `--actor` flag, generate `session_id` per session, include both in payload
+- [x] Infrastructure: add AgentCore Memory resource to `agent_stack.py` (semantic strategy, 30-day event expiry)
+- [x] Infrastructure: pass `MEMORY_ID` env var to agent container + IAM permissions for memory data plane
+- [x] Agent: integrate `AgentCoreMemorySessionManager` with Strands agent
+- [x] Agent: handle empty memory (first conversation) and write failures gracefully
+- [x] CLI: add `--chat` flag for interactive REPL mode with streaming responses
+- [x] CLI: add `--actor` flag, generate `session_id` per session, include both in payload
+- [x] Docs: update README with `--chat` usage, `MEMORY_ID` env var
 - [ ] Test: verify cross-session memory retrieval, tenant isolation, failure resilience
-- [ ] Docs: update README with `--chat` usage, `MEMORY_ID` env var, architecture diagram
 
 ### Ingestion
 
-- [ ] S3 auto-ingest: derive `tenant_id` from S3 key prefix (e.g., `tenant-2/docs/file.md` → `tenant-2`)
+- [x] S3 auto-ingest: derive `tenant_id` from S3 key prefix (e.g., `tenant-2/docs/file.md` → `tenant-2`)
 
 ### Performance
 

@@ -60,6 +60,17 @@ class AgentStack(Stack):
             resources=["*"],
         ))
 
+        # AgentCore Memory data plane
+        role.add_to_policy(iam.PolicyStatement(
+            actions=[
+                "bedrock-agentcore:CreateEvent",
+                "bedrock-agentcore:RetrieveMemory",
+                "bedrock-agentcore:GetSession",
+                "bedrock-agentcore:ListSessions",
+            ],
+            resources=[f"arn:aws:bedrock-agentcore:{self.region}:{self.account}:memory/*"],
+        ))
+
         # Build and push agent container to ECR
         image = ecr_assets.DockerImageAsset(
             self, "AgentImage",
@@ -73,6 +84,34 @@ class AgentStack(Stack):
             actions=["ecr:GetAuthorizationToken"],
             resources=["*"],
         ))
+
+        # AgentCore Memory — semantic strategy for cross-session recall, 30-day event expiry
+        memory = agentcore.CfnMemory(
+            self, "Memory",
+            name="docint_memory",
+            description="Conversational memory for document intelligence agent",
+            event_expiry_duration=30,
+            memory_strategies=[
+                agentcore.CfnMemory.MemoryStrategyProperty(
+                    semantic_memory_strategy=agentcore.CfnMemory.SemanticMemoryStrategyProperty(
+                        name="FactExtractor",
+                        namespaces=["/facts/{actorId}/"],
+                    ),
+                ),
+                agentcore.CfnMemory.MemoryStrategyProperty(
+                    summary_memory_strategy=agentcore.CfnMemory.SummaryMemoryStrategyProperty(
+                        name="SessionSummarizer",
+                        namespaces=["/summaries/{actorId}/{sessionId}/"],
+                    ),
+                ),
+                agentcore.CfnMemory.MemoryStrategyProperty(
+                    user_preference_memory_strategy=agentcore.CfnMemory.UserPreferenceMemoryStrategyProperty(
+                        name="PreferenceLearner",
+                        namespaces=["/preferences/{actorId}/"],
+                    ),
+                ),
+            ],
+        )
 
         # AgentCore Runtime with container deployment
         runtime = agentcore.CfnRuntime(
@@ -88,6 +127,7 @@ class AgentStack(Stack):
             environment_variables={
                 "GATEWAY_URL": gateway.gateway.attr_gateway_url,
                 "MODEL_ID": "us.anthropic.claude-haiku-4-5-20251001-v1:0",
+                "MEMORY_ID": memory.attr_memory_id,
             },
             network_configuration=agentcore.CfnRuntime.NetworkConfigurationProperty(
                 network_mode="PUBLIC",
@@ -107,3 +147,4 @@ class AgentStack(Stack):
 
         CfnOutput(self, "RuntimeId", value=runtime.attr_agent_runtime_id)
         CfnOutput(self, "EndpointArn", value=endpoint.attr_agent_runtime_endpoint_arn)
+        CfnOutput(self, "MemoryId", value=memory.attr_memory_id)

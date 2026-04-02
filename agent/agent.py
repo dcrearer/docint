@@ -12,12 +12,15 @@ from strands import Agent
 from strands.models import BedrockModel
 from strands.tools.mcp import MCPClient
 from mcp_proxy_for_aws.client import aws_iam_streamablehttp_client
+from bedrock_agentcore.memory.integrations.strands.config import AgentCoreMemoryConfig
+from bedrock_agentcore.memory.integrations.strands.session_manager import AgentCoreMemorySessionManager
 
 app = BedrockAgentCoreApp(debug=True)
 
 GATEWAY_URL = os.environ.get("GATEWAY_URL", "")
 MODEL_ID = os.environ.get("MODEL_ID", "us.anthropic.claude-haiku-4-5-20251001-v1:0")
 AWS_REGION = os.environ.get("AWS_REGION", "us-east-1")
+MEMORY_ID = os.environ.get("MEMORY_ID", "")
 
 model = BedrockModel(model_id=MODEL_ID)
 
@@ -39,14 +42,8 @@ Use search_documents to find information across the document corpus.
 Use get_document_metadata to list available documents or get details.
 Use compare_documents to compare two documents side-by-side.
 
-Always cite sources with document titles. Be concise and accurate."""
-
-# Pre-build agent once — reused across invocations
-agent = Agent(
-    model=model,
-    system_prompt=SYSTEM_PROMPT,
-    tools=[mcp_client] if mcp_client else [],
-)
+Always cite sources with document titles. Be concise and accurate.
+Use your memory of past conversations to provide contextual, personalized responses."""
 
 
 @app.entrypoint
@@ -55,9 +52,41 @@ async def invoke(payload):
     try:
         query = payload.get("prompt", "")
         tenant_id = payload.get("tenant_id", "tenant-1")
-        async for event in agent.stream_async(f"[tenant_id={tenant_id}] {query}"):
-            if isinstance(event, dict) and "data" in event:
-                yield event["data"]
+        actor_id = payload.get("actor_id", tenant_id)
+        session_id = payload.get("session_id", "default")
+
+        session_manager = None
+        if MEMORY_ID:
+            try:
+                config = AgentCoreMemoryConfig(
+                    memory_id=MEMORY_ID,
+                    session_id=session_id,
+                    actor_id=actor_id,
+                )
+                session_manager = AgentCoreMemorySessionManager(
+                    agentcore_memory_config=config,
+                    region_name=AWS_REGION,
+                )
+            except Exception as e:
+                logger.warning(f"Memory init failed, continuing without memory: {e}")
+
+        agent = Agent(
+            model=model,
+            system_prompt=SYSTEM_PROMPT,
+            tools=[mcp_client] if mcp_client else [],
+            session_manager=session_manager,
+        )
+
+        try:
+            async for event in agent.stream_async(f"[tenant_id={tenant_id}] {query}"):
+                if isinstance(event, dict) and "data" in event:
+                    yield event["data"]
+        finally:
+            if session_manager:
+                try:
+                    session_manager.close()
+                except Exception as e:
+                    logger.warning(f"Memory flush failed: {e}")
     except Exception as e:
         logger.error(f"Agent error: {e}")
         logger.error(traceback.format_exc())

@@ -66,9 +66,9 @@ async def invoke(payload):
                     session_id=session_id,
                     actor_id=actor_id,
                     retrieval_config={
-                        "SemanticMemory": RetrievalConfig(),
-                        "SummaryMemory": RetrievalConfig(),
-                        "UserPreferenceMemory": RetrievalConfig(),
+                        "/facts/{actorId}/": RetrievalConfig(),
+                        "/summaries/{actorId}/{sessionId}/": RetrievalConfig(),
+                        "/preferences/{actorId}/": RetrievalConfig(),
                     },
                 )
                 session_manager = AgentCoreMemorySessionManager(

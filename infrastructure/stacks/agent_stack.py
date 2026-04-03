@@ -58,9 +58,13 @@ class AgentStack(Stack):
         role.add_to_policy(iam.PolicyStatement(
             actions=[
                 "bedrock-agentcore:CreateEvent",
-                "bedrock-agentcore:RetrieveMemory",
-                "bedrock-agentcore:GetSession",
+                "bedrock-agentcore:GetEvent",
+                "bedrock-agentcore:ListEvents",
                 "bedrock-agentcore:ListSessions",
+                "bedrock-agentcore:GetSession",
+                "bedrock-agentcore:RetrieveMemoryRecords",
+                "bedrock-agentcore:ListMemoryRecords",
+                "bedrock-agentcore:GetMemoryRecord",
             ],
             resources=[f"arn:aws:bedrock-agentcore:{self.region}:{self.account}:memory/*"],
         ))

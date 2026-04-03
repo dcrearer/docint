@@ -65,6 +65,7 @@ async def invoke(payload):
                     memory_id=MEMORY_ID,
                     session_id=session_id,
                     actor_id=actor_id,
+                    batch_size=1,
                     retrieval_config=RetrievalConfig(
                         include_short_term_memory=True,
                         include_long_term_memory=True,

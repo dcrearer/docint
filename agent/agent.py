@@ -58,6 +58,7 @@ async def invoke(payload):
         session_manager = None
         if MEMORY_ID:
             try:
+                logger.info(f"Initializing memory: memory_id={MEMORY_ID}, actor={actor_id}, session={session_id}")
                 config = AgentCoreMemoryConfig(
                     memory_id=MEMORY_ID,
                     session_id=session_id,
@@ -71,8 +72,11 @@ async def invoke(payload):
                     agentcore_memory_config=config,
                     region_name=AWS_REGION,
                 )
+                logger.info("Memory session manager created successfully")
             except Exception as e:
                 logger.warning(f"Memory init failed, continuing without memory: {e}")
+        else:
+            logger.warning("MEMORY_ID not set, skipping memory")
 
         agent = Agent(
             model=model,

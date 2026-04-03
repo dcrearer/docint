@@ -12,7 +12,7 @@ from strands import Agent
 from strands.models import BedrockModel
 from strands.tools.mcp import MCPClient
 from mcp_proxy_for_aws.client import aws_iam_streamablehttp_client
-from bedrock_agentcore.memory.integrations.strands.config import AgentCoreMemoryConfig
+from bedrock_agentcore.memory.integrations.strands.config import AgentCoreMemoryConfig, RetrievalConfig
 from bedrock_agentcore.memory.integrations.strands.session_manager import AgentCoreMemorySessionManager
 
 app = BedrockAgentCoreApp(debug=True)
@@ -62,6 +62,10 @@ async def invoke(payload):
                     memory_id=MEMORY_ID,
                     session_id=session_id,
                     actor_id=actor_id,
+                    retrieval_config=RetrievalConfig(
+                        include_short_term_memory=True,
+                        include_long_term_memory=True,
+                    ),
                 )
                 session_manager = AgentCoreMemorySessionManager(
                     agentcore_memory_config=config,

@@ -159,27 +159,43 @@ async fn main() -> Result<()> {
             if line == "quit" || line == "exit" {
                 break;
             }
-            eprint!("agent> ");
             let request = Request {
                 prompt: line,
                 tenant_id: cli.tenant.clone(),
                 actor_id: actor_id.clone(),
                 session_id: session_id.clone(),
             };
-            if let Err(e) = send_query(&client, &cli.runtime_arn, &cli.endpoint, &request, cli.timing).await {
+            if let Err(e) = send_query(
+                &client,
+                &cli.runtime_arn,
+                &cli.endpoint,
+                &request,
+                cli.timing,
+            )
+            .await
+            {
                 eprintln!("Error: {e}");
             }
             eprintln!();
         }
     } else {
-        let prompt = cli.prompt.context("prompt is required in single-shot mode")?;
+        let prompt = cli
+            .prompt
+            .context("prompt is required in single-shot mode")?;
         let request = Request {
             prompt,
             tenant_id: cli.tenant,
             actor_id,
             session_id,
         };
-        send_query(&client, &cli.runtime_arn, &cli.endpoint, &request, cli.timing).await?;
+        send_query(
+            &client,
+            &cli.runtime_arn,
+            &cli.endpoint,
+            &request,
+            cli.timing,
+        )
+        .await?;
     }
 
     Ok(())

@@ -24,6 +24,8 @@ MEMORY_ID = os.environ.get("MEMORY_ID", "")
 
 model = BedrockModel(model_id=MODEL_ID)
 
+logger.info(f"MEMORY_ID={'SET: ' + MEMORY_ID if MEMORY_ID else 'NOT SET'}")
+
 # Pre-connect MCP client at module level — reused across invocations
 mcp_client = MCPClient(
     lambda: aws_iam_streamablehttp_client(

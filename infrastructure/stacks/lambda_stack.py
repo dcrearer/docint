@@ -52,7 +52,6 @@ class LambdaStack(Stack):
             vpc=database.vpc,
             vpc_subnets=ec2.SubnetSelection(subnet_type=ec2.SubnetType.PRIVATE_ISOLATED),
             security_groups=[lambda_sg],
-            tracing=_lambda.Tracing.ACTIVE,
         )
 
         self.search_fn = _lambda.Function(

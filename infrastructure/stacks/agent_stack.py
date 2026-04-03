@@ -54,12 +54,6 @@ class AgentStack(Stack):
             resources=[f"arn:aws:logs:{self.region}:{self.account}:log-group:/aws/bedrock-agentcore/runtimes/*:log-stream:*"],
         ))
 
-        # X-Ray
-        role.add_to_policy(iam.PolicyStatement(
-            actions=["xray:PutTraceSegments", "xray:PutTelemetryRecords", "xray:GetSamplingRules", "xray:GetSamplingTargets"],
-            resources=["*"],
-        ))
-
         # AgentCore Memory data plane
         role.add_to_policy(iam.PolicyStatement(
             actions=[

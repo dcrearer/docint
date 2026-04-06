@@ -6,6 +6,7 @@ A production-grade RAG (Retrieval-Augmented Generation) system built with:
 - **AgentCore Gateway** exposing Lambda functions as MCP tools (SigV4 auth)
 - **PostgreSQL + pgvector** for hybrid vector + full-text search
 - **S3 auto-ingest** — drop a file, it's automatically chunked, embedded, and searchable
+- **Cognito authentication** — CLI sign-up/login with tenant isolation via Cognito `sub` (UUID)
 
 ![Architecture](docs/architecture.png)
 
@@ -27,13 +28,17 @@ docint/
 │   ├── lambda-compare/         # Document comparison Lambda
 │   ├── lambda-ingest/          # S3 ingestion pipeline Lambda (S3 events + direct invoke)
 │   └── docint-cli/             # Rust CLI client for querying the agent
+│       └── src/
+│           ├── main.rs         # CLI entry point, chat REPL
+│           └── auth.rs         # Cognito auth (login, signup, token cache)
 ├── agent/
 │   ├── agent.py                # Strands agent (Claude Haiku + Gateway tools via mcp-proxy-for-aws)
 │   ├── Dockerfile              # ARM64 container for AgentCore Runtime
 │   └── requirements.txt
 ├── infrastructure/             # CDK (Python)
-│   ├── app.py                  # 5 stacks wired together
+│   ├── app.py                  # 6 stacks wired together
 │   └── stacks/
+│       ├── auth_stack.py       # Cognito User Pool + auto-confirm trigger
 │       ├── database_stack.py   # Aurora Serverless v2 + VPC endpoints
 │       ├── lambda_stack.py     # 4 Lambdas (VPC, X-Ray, IAM) + S3 bucket with event triggers
 │       ├── gateway_stack.py    # AgentCore Gateway + MCP tool targets
@@ -60,21 +65,29 @@ docint/
 ## Quick Start — Query the Agent
 
 ```bash
-# Set your runtime ARN (from CDK output)
+# Set environment variables (from CDK outputs)
 export DOCINT_RUNTIME_ARN="arn:aws:bedrock-agentcore:us-east-1:<ACCOUNT_ID>:runtime/<RUNTIME_ID>"
+export DOCINT_CLIENT_ID="<COGNITO_CLIENT_ID>"
 
-# Ask a question
-cargo run --bin docint-cli -- "How does autoscaling work in EKS?"
-
-# Specify a tenant
-cargo run --bin docint-cli -- -t tenant-2 "What documents do you have?"
-
-# Interactive chat mode (session memory persists across turns)
+# Launch interactive chat (sign up or login on first run)
 cargo run --bin docint-cli -- --chat
-
-# Chat as a specific actor/tenant
-cargo run --bin docint-cli -- --chat -t tenant-2 --actor user-alice
 ```
+
+On first run you'll see:
+```
+Welcome to docint
+
+> Login
+  Sign up
+  Quit
+```
+
+Sign up creates an account and logs you in immediately. Your tenant ID is your Cognito `sub` (UUID) — unique, collision-free, and used for all data isolation.
+
+Chat commands:
+- Type a question to query the agent
+- `logout` — clear cached credentials and exit
+- `quit` / `exit` — exit
 
 ## Ingest Documents
 
@@ -177,6 +190,8 @@ cdk deploy --all
 - **S3 event-driven ingestion** — upload a file, it's automatically chunked, embedded, and stored
 - **Tenant-from-key derivation** — S3 key prefix (e.g., `tenant-2/docs/file.md`) determines tenant_id automatically
 - **Conversational memory** — AgentCore Memory with semantic, summary, and user preference strategies for cross-session recall
+- **Cognito `sub` as tenant ID** — UUID assigned by Cognito on sign-up, guarantees no collision, used for RLS and data isolation
+- **Auto-confirm Lambda trigger** — skips email verification for fast sign-up; easily reverted to email verification for production
 
 ## TODO
 

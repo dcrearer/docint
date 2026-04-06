@@ -10,6 +10,11 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 aws-config = { version = "1", features = ["behavior-version-latest"] }
 aws-sdk-bedrockagentcore = "1"
+aws-sdk-cognitoidentityprovider = "1"
 clap = { version = "4", features = ["derive", "env"] }
 indicatif = "0.17"
 uuid = { version = "1", features = ["v4"] }
+base64 = "0.22"
+dirs = "6"
+rpassword = "7"
+dialoguer = "0.11"

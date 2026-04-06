@@ -1,3 +1,5 @@
+mod auth;
+
 use anyhow::{Context, Result};
 use aws_sdk_bedrockagentcore::primitives::Blob;
 use clap::Parser;
@@ -9,26 +11,19 @@ use tokio::io::{AsyncBufReadExt, BufReader};
 use uuid::Uuid;
 
 #[derive(Parser)]
-#[command(name = "docint", about = "Query the Document Intelligence agent")]
+#[command(name = "docint", about = "Document Intelligence agent")]
 struct Cli {
-    /// The question to ask the agent (omit for --chat mode)
-    prompt: Option<String>,
-
-    /// Tenant ID for multi-tenant isolation
-    #[arg(short, long, default_value = "tenant-1")]
-    tenant: String,
-
-    /// Actor ID for memory isolation (defaults to tenant ID)
-    #[arg(short, long)]
-    actor: Option<String>,
-
-    /// Interactive chat mode with session memory
+    /// Interactive chat mode
     #[arg(long)]
     chat: bool,
 
     /// Agent runtime ARN
     #[arg(long, env("DOCINT_RUNTIME_ARN"))]
     runtime_arn: String,
+
+    /// Cognito App Client ID
+    #[arg(long, env("DOCINT_CLIENT_ID"))]
+    client_id: String,
 
     /// Endpoint qualifier
     #[arg(long, env("DOCINT_ENDPOINT"), default_value = "docint_agent_endpoint")]
@@ -47,13 +42,9 @@ struct Request {
     session_id: String,
 }
 
-/// Extract text from an SSE data line, unescaping JSON string content.
 fn extract_sse_text(line: &str) -> Option<String> {
     let payload = line.strip_prefix("data: ")?;
-    if let Ok(text) = serde_json::from_str::<String>(payload) {
-        return Some(text);
-    }
-    None
+    serde_json::from_str::<String>(payload).ok()
 }
 
 async fn send_query(
@@ -106,6 +97,7 @@ async fn send_query(
             if first_byte {
                 ttfb = t2.elapsed();
                 first_byte = false;
+                write!(stdout, "🤖 ")?;
             }
             write!(stdout, "{text}")?;
             stdout.flush()?;
@@ -138,64 +130,74 @@ async fn main() -> Result<()> {
     let cli = Cli::parse();
 
     let config = aws_config::load_defaults(aws_config::BehaviorVersion::latest()).await;
-    let client = aws_sdk_bedrockagentcore::Client::new(&config);
+    let agent_client = aws_sdk_bedrockagentcore::Client::new(&config);
+    let cognito_client = aws_sdk_cognitoidentityprovider::Client::new(&config);
 
-    let actor_id = cli.actor.unwrap_or_else(|| cli.tenant.clone());
-    let session_id = Uuid::new_v4().to_string();
+    // --- Authentication ---
+    eprintln!("Welcome to docint\n");
 
-    if cli.chat {
-        eprintln!("docint chat (session {session_id}) — type 'quit' to exit");
-        eprintln!();
-        let stdin = io::stdin().lock();
-        let mut lines = stdin.lines();
-        loop {
-            eprint!("you> ");
-            io::stderr().flush()?;
-            let Some(Ok(line)) = lines.next() else { break };
-            let line = line.trim().to_string();
-            if line.is_empty() {
-                continue;
-            }
-            if line == "quit" || line == "exit" {
-                break;
-            }
-            let request = Request {
-                prompt: line,
-                tenant_id: cli.tenant.clone(),
-                actor_id: actor_id.clone(),
-                session_id: session_id.clone(),
-            };
-            if let Err(e) = send_query(
-                &client,
-                &cli.runtime_arn,
-                &cli.endpoint,
-                &request,
-                cli.timing,
-            )
-            .await
-            {
-                eprintln!("Error: {e}");
-            }
-            eprintln!();
+    let session = match auth::try_restore_session(&cognito_client, &cli.client_id).await {
+        Some(s) => {
+            eprintln!("✓ Logged in as {} (tenant: {})\n", s.username, s.tenant_id);
+            s
         }
-    } else {
-        let prompt = cli
-            .prompt
-            .context("prompt is required in single-shot mode")?;
+        None => {
+            let choices = &["Login", "Sign up", "Quit"];
+            let selection = dialoguer::Select::new()
+                .items(choices)
+                .default(0)
+                .interact()?;
+
+            let s = match selection {
+                0 => auth::login(&cognito_client, &cli.client_id).await?,
+                1 => auth::signup(&cognito_client, &cli.client_id).await?,
+                _ => return Ok(()),
+            };
+            eprintln!("✓ Logged in as {} (tenant: {})\n", s.username, s.tenant_id);
+            s
+        }
+    };
+
+    // --- Chat loop ---
+    let session_id = Uuid::new_v4().to_string();
+    eprintln!("docint chat (session {session_id}) — type 'quit' to exit\n");
+
+    let stdin = io::stdin().lock();
+    let mut lines = stdin.lines();
+    loop {
+        eprint!("🏗️  ");
+        io::stderr().flush()?;
+        let Some(Ok(line)) = lines.next() else { break };
+        let line = line.trim().to_string();
+        if line.is_empty() {
+            continue;
+        }
+        if line == "quit" || line == "exit" {
+            break;
+        }
+        if line == "logout" {
+            auth::logout()?;
+            eprintln!("✓ Logged out");
+            break;
+        }
         let request = Request {
-            prompt,
-            tenant_id: cli.tenant,
-            actor_id,
-            session_id,
+            prompt: line,
+            tenant_id: session.tenant_id.clone(),
+            actor_id: session.tenant_id.clone(),
+            session_id: session_id.clone(),
         };
-        send_query(
-            &client,
+        if let Err(e) = send_query(
+            &agent_client,
             &cli.runtime_arn,
             &cli.endpoint,
             &request,
             cli.timing,
         )
-        .await?;
+        .await
+        {
+            eprintln!("Error: {e}");
+        }
+        eprintln!();
     }
 
     Ok(())

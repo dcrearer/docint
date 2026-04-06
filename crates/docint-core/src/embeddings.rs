@@ -2,8 +2,8 @@
 //! Converts text into 1024-dimensional vectors for similarity search.
 
 use anyhow::{Context, Result};
-use aws_sdk_bedrockruntime::primitives::Blob;
 use aws_sdk_bedrockruntime::Client;
+use aws_sdk_bedrockruntime::primitives::Blob;
 use serde::{Deserialize, Serialize};
 
 const MODEL_ID: &str = "amazon.titan-embed-text-v2:0";
@@ -60,10 +60,13 @@ impl Embedder {
             .body(Blob::new(body))
             .send()
             .await
-            .context(format!("Bedrock InvokeModel failed (text_len={})", text.len()))?;
+            .context(format!(
+                "Bedrock InvokeModel failed (text_len={})",
+                text.len()
+            ))?;
 
-        let parsed: TitanResponse =
-            serde_json::from_slice(resp.body().as_ref()).context("Failed to parse Titan response")?;
+        let parsed: TitanResponse = serde_json::from_slice(resp.body().as_ref())
+            .context("Failed to parse Titan response")?;
 
         Ok(parsed.embedding)
     }

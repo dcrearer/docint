@@ -6,6 +6,7 @@ from stacks.lambda_stack import LambdaStack
 from stacks.gateway_stack import GatewayStack
 from stacks.agent_stack import AgentStack
 from stacks.monitoring_stack import MonitoringStack
+from stacks.auth_stack import AuthStack
 
 app = cdk.App()
 
@@ -16,6 +17,7 @@ env = cdk.Environment(
     region=os.environ.get("CDK_DEFAULT_REGION", "us-east-1"),
 )
 
+AuthStack(app, "DocintAuthStack", env=env)
 db_stack = DatabaseStack(app, "DocintDatabaseStack", env=env)
 lambda_stack = LambdaStack(app, "DocintLambdaStack", database=db_stack, env=env)
 gateway_stack = GatewayStack(app, "DocintGatewayStack", lambdas=lambda_stack, env=env)

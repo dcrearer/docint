@@ -90,19 +90,13 @@ pub async fn try_restore_session(client: &Client, client_id: &str) -> Option<Ses
     session_from_token(&id_token).ok()
 }
 
-pub async fn login(client: &Client, client_id: &str) -> Result<Session> {
-    let username = dialoguer::Input::<String>::new()
-        .with_prompt("Username")
-        .interact_text()?;
-
-    let password = rpassword::prompt_password("Password: ")?;
-
+async fn authenticate(client: &Client, client_id: &str, username: &str, password: &str) -> Result<Session> {
     let resp = client
         .initiate_auth()
         .auth_flow(aws_sdk_cognitoidentityprovider::types::AuthFlowType::UserPasswordAuth)
         .client_id(client_id)
-        .auth_parameters("USERNAME", &username)
-        .auth_parameters("PASSWORD", &password)
+        .auth_parameters("USERNAME", username)
+        .auth_parameters("PASSWORD", password)
         .send()
         .await
         .context("Login failed — check username and password")?;
@@ -119,6 +113,16 @@ pub async fn login(client: &Client, client_id: &str) -> Result<Session> {
     std::fs::write(cache_path()?, serde_json::to_string(&cache)?)?;
 
     session_from_token(id_token)
+}
+
+pub async fn login(client: &Client, client_id: &str) -> Result<Session> {
+    let username = dialoguer::Input::<String>::new()
+        .with_prompt("Username")
+        .interact_text()?;
+
+    let password = rpassword::prompt_password("Password: ")?;
+
+    authenticate(client, client_id, &username, &password).await
 }
 
 pub async fn signup(client: &Client, client_id: &str) -> Result<Session> {
@@ -143,7 +147,7 @@ pub async fn signup(client: &Client, client_id: &str) -> Result<Session> {
         .context("Sign up failed")?;
 
     eprintln!("✓ Account created. Logging you in...");
-    login(client, client_id).await
+    authenticate(client, client_id, &username, &password).await
 }
 
 pub fn logout() -> Result<()> {

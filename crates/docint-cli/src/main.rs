@@ -97,7 +97,7 @@ async fn send_query(
             if first_byte {
                 ttfb = t2.elapsed();
                 first_byte = false;
-                write!(stdout, "🤖 ")?;
+                write!(stdout, "\n🤖 ")?;
             }
             write!(stdout, "{text}")?;
             stdout.flush()?;

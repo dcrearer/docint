@@ -134,7 +134,10 @@ fn title_from_key(key: &str) -> String {
 /// Derive tenant_id from S3 key prefix: "tenant-2/docs/file.md" → "tenant-2".
 /// Falls back to default if key has no prefix or prefix is empty.
 fn tenant_from_key<'a>(key: &'a str, default: &'a str) -> &'a str {
-    key.split('/').next().filter(|s| !s.is_empty() && s.contains("tenant")).unwrap_or(default)
+    key.split('/')
+        .next()
+        .filter(|s| !s.is_empty() && !s.contains('.'))
+        .unwrap_or(default)
 }
 
 async fn handler(event: LambdaEvent<IngestEvent>) -> Result<Response, Error> {

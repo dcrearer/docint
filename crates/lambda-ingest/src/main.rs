@@ -179,3 +179,33 @@ async fn main() -> Result<(), Error> {
 
     lambda_runtime::run(service_fn(handler)).await
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn tenant_from_key_uuid_prefix() {
+        assert_eq!(tenant_from_key("a1b2c3d4-e5f6/docs/file.md", "default"), "a1b2c3d4-e5f6");
+    }
+
+    #[test]
+    fn tenant_from_key_legacy_prefix() {
+        assert_eq!(tenant_from_key("tenant-2/docs/file.md", "default"), "tenant-2");
+    }
+
+    #[test]
+    fn tenant_from_key_bare_file_falls_back() {
+        assert_eq!(tenant_from_key("file.md", "default"), "default");
+    }
+
+    #[test]
+    fn tenant_from_key_no_prefix_falls_back() {
+        assert_eq!(tenant_from_key("", "default"), "default");
+    }
+
+    #[test]
+    fn title_from_key_strips_extension() {
+        assert_eq!(title_from_key("docs/my-notes.md"), "my notes");
+    }
+}

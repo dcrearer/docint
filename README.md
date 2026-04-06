@@ -212,6 +212,7 @@ cdk deploy --all
 
 ### Performance
 
+- [ ] CI: change `cargo test --lib --workspace` to `cargo test --workspace` to include binary crate tests
 - [ ] Tighter system prompt to reduce output tokens
 - [ ] Single-turn tool use (skip tool selection LLM round-trip)
 - [ ] Reduce search results returned to minimize synthesis input

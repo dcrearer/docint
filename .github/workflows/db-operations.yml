@@ -64,11 +64,13 @@ jobs:
           echo "Running migrations..."
           for f in $(ls migrations/*.sql | sort); do
             echo "→ $f"
-            SQL=$(cat "$f")
-            aws rds-data execute-statement \
-              --resource-arn "${{ steps.db.outputs.cluster_arn }}" \
-              --secret-arn "${{ steps.db.outputs.secret_arn }}" \
-              --database docint \
-              --sql "$SQL" || echo "  (already applied or skipped)"
+            while IFS= read -r stmt; do
+              [ -z "$stmt" ] && continue
+              aws rds-data execute-statement \
+                --resource-arn "${{ steps.db.outputs.cluster_arn }}" \
+                --secret-arn "${{ steps.db.outputs.secret_arn }}" \
+                --database docint \
+                --sql "$stmt" || echo "  (already applied or skipped)"
+            done < <(sed 's/--.*$//' "$f" | tr '\n' ' ' | sed 's/;/;\n/g' | sed 's/^[[:space:]]*//' | grep -v '^$')
           done
           echo "✓ Migrations complete"

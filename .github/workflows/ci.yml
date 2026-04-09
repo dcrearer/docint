@@ -143,6 +143,7 @@ jobs:
         run: cdk deploy --all --require-approval never
 
       # Run SQL migrations via RDS Data API (no VPC access needed).
+      # Splits each file on semicolons since Data API doesn't support multi-statement SQL.
       - name: Run migrations
         run: |
           CLUSTER_ARN=$(aws cloudformation describe-stacks --stack-name DocintDatabaseStack \
@@ -151,10 +152,12 @@ jobs:
             --query "Stacks[0].Outputs[?OutputKey=='SecretArn'].OutputValue" --output text)
           for f in $(ls migrations/*.sql | sort); do
             echo "→ $f"
-            SQL=$(cat "$f")
-            aws rds-data execute-statement \
-              --resource-arn "$CLUSTER_ARN" \
-              --secret-arn "$SECRET_ARN" \
-              --database docint \
-              --sql "$SQL" || echo "  (already applied or skipped)"
+            while IFS= read -r stmt; do
+              [ -z "$stmt" ] && continue
+              aws rds-data execute-statement \
+                --resource-arn "$CLUSTER_ARN" \
+                --secret-arn "$SECRET_ARN" \
+                --database docint \
+                --sql "$stmt" || echo "  (already applied or skipped)"
+            done < <(sed 's/--.*$//' "$f" | tr '\n' ' ' | sed 's/;/;\n/g' | sed 's/^[[:space:]]*//' | grep -v '^$')
           done

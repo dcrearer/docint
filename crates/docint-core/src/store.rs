@@ -23,16 +23,27 @@ impl VectorStore {
         Ok(())
     }
 
-    /// Create a new document record. Returns the full row including generated ID.
+    /// Create or replace a document record. On re-ingest of the same S3 key,
+    /// deletes old chunks (via CASCADE) and returns the refreshed row.
     pub async fn insert_document(&self, tenant_id: &str, title: &str, source_key: &str) -> Result<Document> {
         let doc = sqlx::query_as::<_, Document>(
-            "INSERT INTO documents (tenant_id, title, source_key) VALUES ($1, $2, $3) RETURNING *"
+            "INSERT INTO documents (tenant_id, title, source_key)
+             VALUES ($1, $2, $3)
+             ON CONFLICT (tenant_id, source_key) DO UPDATE
+                SET title = EXCLUDED.title, created_at = now()
+             RETURNING *"
         )
         .bind(tenant_id)
         .bind(title)
         .bind(source_key)
         .fetch_one(&self.pool)
         .await?;
+
+        // Delete old chunks so re-ingest starts fresh
+        sqlx::query("DELETE FROM chunks WHERE document_id = $1")
+            .bind(doc.id)
+            .execute(&self.pool)
+            .await?;
 
         Ok(doc)
     }
@@ -92,6 +103,7 @@ impl VectorStore {
                 FROM chunks c
                 JOIN documents d ON d.id = c.document_id
                 WHERE d.tenant_id = $2
+                ORDER BY c.embedding <=> $1
                 LIMIT 50
             ),
             fts_ranked AS (

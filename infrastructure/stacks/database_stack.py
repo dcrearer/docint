@@ -55,8 +55,10 @@ class DatabaseStack(Stack):
             vpc_subnets=ec2.SubnetSelection(subnet_type=ec2.SubnetType.PRIVATE_ISOLATED),
             security_groups=[self.db_sg],
             removal_policy=RemovalPolicy.SNAPSHOT,
+            enable_data_api=True,
         )
 
         CfnOutput(self, "ClusterEndpoint", value=self.cluster.cluster_endpoint.hostname)
+        CfnOutput(self, "ClusterArn", value=self.cluster.cluster_arn)
         CfnOutput(self, "SecretArn", value=self.cluster.secret.secret_arn)
         CfnOutput(self, "VpcId", value=self.vpc.vpc_id)

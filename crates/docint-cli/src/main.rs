@@ -13,10 +13,6 @@ use uuid::Uuid;
 #[derive(Parser)]
 #[command(name = "docint", about = "Document Intelligence agent")]
 struct Cli {
-    /// Interactive chat mode
-    #[arg(long)]
-    chat: bool,
-
     /// Agent runtime ARN
     #[arg(long, env("DOCINT_RUNTIME_ARN"))]
     runtime_arn: String,
@@ -127,10 +123,20 @@ async fn send_query(
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    tracing_subscriber::fmt()
+        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+        .with_writer(std::io::stderr)
+        .init();
+
     let cli = Cli::parse();
 
     let config = aws_config::load_defaults(aws_config::BehaviorVersion::latest()).await;
-    let agent_client = aws_sdk_bedrockagentcore::Client::new(&config);
+    let agent_config = aws_sdk_bedrockagentcore::config::Builder::from(&config)
+        .stalled_stream_protection(
+            aws_sdk_bedrockagentcore::config::StalledStreamProtectionConfig::disabled(),
+        )
+        .build();
+    let agent_client = aws_sdk_bedrockagentcore::Client::from_conf(agent_config);
     let cognito_client = aws_sdk_cognitoidentityprovider::Client::new(&config);
 
     // --- Authentication ---
@@ -197,7 +203,6 @@ async fn main() -> Result<()> {
         {
             eprintln!("Error: {e}");
         }
-        eprintln!();
     }
 
     Ok(())

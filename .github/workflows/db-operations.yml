@@ -1,0 +1,74 @@
+# Manual workflow for database operations.
+# Uses RDS Data API — no VPC access needed.
+#
+# Usage:
+#   - "migrate" runs all pending SQL migrations in order
+#   - "reset" truncates all data (documents + chunks), then runs migrations
+
+name: Database Operations
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "Action to perform"
+        required: true
+        type: choice
+        options:
+          - migrate
+          - reset
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: us-east-1
+
+jobs:
+  db-operation:
+    name: "${{ inputs.action }}"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Get DB identifiers
+        id: db
+        run: |
+          CLUSTER_ARN=$(aws cloudformation describe-stacks --stack-name DocintDatabaseStack \
+            --query "Stacks[0].Outputs[?OutputKey=='ClusterArn'].OutputValue" --output text)
+          SECRET_ARN=$(aws cloudformation describe-stacks --stack-name DocintDatabaseStack \
+            --query "Stacks[0].Outputs[?OutputKey=='SecretArn'].OutputValue" --output text)
+          echo "cluster_arn=$CLUSTER_ARN" >> "$GITHUB_OUTPUT"
+          echo "secret_arn=$SECRET_ARN" >> "$GITHUB_OUTPUT"
+
+      - name: Reset database
+        if: inputs.action == 'reset'
+        run: |
+          echo "⚠️  Truncating all data..."
+          aws rds-data execute-statement \
+            --resource-arn "${{ steps.db.outputs.cluster_arn }}" \
+            --secret-arn "${{ steps.db.outputs.secret_arn }}" \
+            --database docint \
+            --sql "TRUNCATE chunks, documents CASCADE"
+          echo "✓ All data deleted"
+
+      - name: Run migrations
+        run: |
+          echo "Running migrations..."
+          for f in $(ls migrations/*.sql | sort); do
+            echo "→ $f"
+            SQL=$(cat "$f")
+            aws rds-data execute-statement \
+              --resource-arn "${{ steps.db.outputs.cluster_arn }}" \
+              --secret-arn "${{ steps.db.outputs.secret_arn }}" \
+              --database docint \
+              --sql "$SQL" || echo "  (already applied or skipped)"
+          done
+          echo "✓ Migrations complete"

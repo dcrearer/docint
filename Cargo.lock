@@ -1086,6 +1086,7 @@ dependencies = [
  "aws-config",
  "aws-sdk-bedrockruntime",
  "chrono",
+ "futures",
  "pgvector",
  "serde",
  "serde_json",

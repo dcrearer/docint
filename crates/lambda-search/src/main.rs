@@ -54,15 +54,21 @@ async fn get_state() -> &'static AppState {
 }
 
 async fn handler(event: LambdaEvent<Request>) -> Result<Response, Error> {
+    use docint_core::db;
+
     let req = event.payload;
     let state = get_state().await;
-    state.store.set_tenant(&req.tenant_id).await?;
 
     let embedding = state.embedder.embed(&req.query).await?;
-    let results = state
-        .store
-        .hybrid_search(&embedding, &req.query, &req.tenant_id, req.limit.unwrap_or(5))
-        .await?;
+    let limit = req.limit.unwrap_or(5);
+    let query = req.query.clone();
+    let tenant_id = req.tenant_id.clone();
+
+    let results = db::with_tenant(state.store.pool(), &req.tenant_id, move |tx| {
+        Box::pin(async move {
+            VectorStore::hybrid_search_tx(tx, &embedding, &query, &tenant_id, limit).await
+        })
+    }).await?;
 
     Ok(Response {
         results: results

@@ -13,5 +13,6 @@ chrono = { workspace = true }
 anyhow = { workspace = true }
 pgvector = { workspace = true }
 tracing = { workspace = true }
+futures = "0.3"
 aws-config = { version = "1", features = ["behavior-version-latest"] }
 aws-sdk-bedrockruntime = "1"

@@ -3,7 +3,7 @@
 
 use anyhow::Result;
 use pgvector::Vector;
-use sqlx::PgPool;
+use sqlx::{PgPool, Postgres, Transaction};
 use uuid::Uuid;
 
 use crate::models::{Chunk, Document, DocumentMetadata, SearchResult};
@@ -17,15 +17,14 @@ impl VectorStore {
         Self { pool }
     }
 
-    /// Set the RLS tenant context. Must be called before any query.
-    pub async fn set_tenant(&self, tenant_id: &str) -> Result<()> {
-        crate::db::set_tenant(&self.pool, tenant_id).await?;
-        Ok(())
+    /// Get a reference to the underlying pool (for use with db::with_tenant)
+    pub fn pool(&self) -> &PgPool {
+        &self.pool
     }
 
     /// Create or replace a document record. On re-ingest of the same S3 key,
     /// deletes old chunks (via CASCADE) and returns the refreshed row.
-    pub async fn insert_document(&self, tenant_id: &str, title: &str, source_key: &str) -> Result<Document> {
+    pub async fn insert_document_tx(tx: &mut Transaction<'_, Postgres>, tenant_id: &str, title: &str, source_key: &str) -> Result<Document> {
         let doc = sqlx::query_as::<_, Document>(
             "INSERT INTO documents (tenant_id, title, source_key)
              VALUES ($1, $2, $3)
@@ -36,21 +35,21 @@ impl VectorStore {
         .bind(tenant_id)
         .bind(title)
         .bind(source_key)
-        .fetch_one(&self.pool)
+        .fetch_one(&mut **tx)
         .await?;
 
         // Delete old chunks so re-ingest starts fresh
         sqlx::query("DELETE FROM chunks WHERE document_id = $1")
             .bind(doc.id)
-            .execute(&self.pool)
+            .execute(&mut **tx)
             .await?;
 
         Ok(doc)
     }
 
     /// Insert a chunk with its embedding. The embedding is stored as a pgvector column.
-    #[tracing::instrument(skip(self, content, embedding))]
-    pub async fn insert_chunk(&self, document_id: Uuid, content: &str, chunk_index: i32, embedding: &[f32]) -> Result<Chunk> {
+    #[tracing::instrument(skip(tx, content, embedding))]
+    pub async fn insert_chunk_tx(tx: &mut Transaction<'_, Postgres>, document_id: Uuid, content: &str, chunk_index: i32, embedding: &[f32]) -> Result<Chunk> {
         let chunk = sqlx::query_as::<_, Chunk>(
             "INSERT INTO chunks (document_id, content, chunk_index, embedding) VALUES ($1, $2, $3, $4) RETURNING id, document_id, content, chunk_index, created_at"
         )
@@ -58,15 +57,15 @@ impl VectorStore {
         .bind(content)
         .bind(chunk_index)
         .bind(Vector::from(embedding.to_vec()))
-        .fetch_one(&self.pool)
+        .fetch_one(&mut **tx)
         .await?;
 
         Ok(chunk)
     }
 
     /// Pure vector similarity search using cosine distance (<=> operator).
-    #[tracing::instrument(skip(self, embedding))]
-    pub async fn similarity_search(&self, embedding: &[f32], tenant_id: &str, limit: i64) -> Result<Vec<SearchResult>> {
+    #[tracing::instrument(skip(tx, embedding))]
+    pub async fn similarity_search_tx(tx: &mut Transaction<'_, Postgres>, embedding: &[f32], tenant_id: &str, limit: i64) -> Result<Vec<SearchResult>> {
         let results = sqlx::query_as::<_, SearchResult>(
             "SELECT c.id AS chunk_id, c.document_id, c.content, c.embedding <=> $1 AS distance, d.title
              FROM chunks c
@@ -78,7 +77,7 @@ impl VectorStore {
         .bind(Vector::from(embedding.to_vec()))
         .bind(tenant_id)
         .bind(limit)
-        .fetch_all(&self.pool)
+        .fetch_all(&mut **tx)
         .await?;
 
         Ok(results)
@@ -93,8 +92,8 @@ impl VectorStore {
     ///   2. Run full-text search → rank results 1..M
     ///   3. For each result: score = 1/(60+vector_rank) + 1/(60+fts_rank)
     ///   4. Sort by combined score
-    #[tracing::instrument(skip(self, embedding))]
-    pub async fn hybrid_search(&self, embedding: &[f32], query: &str, tenant_id: &str, limit: i64) -> Result<Vec<SearchResult>> {
+    #[tracing::instrument(skip(tx, embedding))]
+    pub async fn hybrid_search_tx(tx: &mut Transaction<'_, Postgres>, embedding: &[f32], query: &str, tenant_id: &str, limit: i64) -> Result<Vec<SearchResult>> {
         let results = sqlx::query_as::<_, SearchResult>(
             "WITH vector_ranked AS (
                 SELECT c.id, c.document_id, c.content, d.title,
@@ -134,14 +133,14 @@ impl VectorStore {
         .bind(tenant_id)
         .bind(query)
         .bind(limit)
-        .fetch_all(&self.pool)
+        .fetch_all(&mut **tx)
         .await?;
 
         Ok(results)
     }
 
     /// Get metadata for a single document, including chunk count.
-    pub async fn get_metadata(&self, document_id: Uuid, tenant_id: &str) -> Result<Option<DocumentMetadata>> {
+    pub async fn get_metadata_tx(tx: &mut Transaction<'_, Postgres>, document_id: Uuid, tenant_id: &str) -> Result<Option<DocumentMetadata>> {
         let meta = sqlx::query_as::<_, DocumentMetadata>(
             "SELECT d.id, d.tenant_id, d.title, d.source_key, d.created_at, d.metadata,
                     COUNT(c.id)::int AS chunk_count
@@ -152,14 +151,14 @@ impl VectorStore {
         )
         .bind(document_id)
         .bind(tenant_id)
-        .fetch_optional(&self.pool)
+        .fetch_optional(&mut **tx)
         .await?;
 
         Ok(meta)
     }
 
     /// List all documents for a tenant, ordered by newest first.
-    pub async fn list_documents(&self, tenant_id: &str, limit: i64) -> Result<Vec<DocumentMetadata>> {
+    pub async fn list_documents_tx(tx: &mut Transaction<'_, Postgres>, tenant_id: &str, limit: i64) -> Result<Vec<DocumentMetadata>> {
         let docs = sqlx::query_as::<_, DocumentMetadata>(
             "SELECT d.id, d.tenant_id, d.title, d.source_key, d.created_at, d.metadata,
                     COUNT(c.id)::int AS chunk_count
@@ -172,7 +171,7 @@ impl VectorStore {
         )
         .bind(tenant_id)
         .bind(limit)
-        .fetch_all(&self.pool)
+        .fetch_all(&mut **tx)
         .await?;
 
         Ok(docs)
@@ -180,8 +179,8 @@ impl VectorStore {
 
     /// Search within a single document. Used by the compare Lambda
     /// to find relevant chunks in each of two documents separately.
-    #[tracing::instrument(skip(self, embedding))]
-    pub async fn search_within_document(&self, embedding: &[f32], document_id: Uuid, tenant_id: &str, limit: i64) -> Result<Vec<SearchResult>> {
+    #[tracing::instrument(skip(tx, embedding))]
+    pub async fn search_within_document_tx(tx: &mut Transaction<'_, Postgres>, embedding: &[f32], document_id: Uuid, tenant_id: &str, limit: i64) -> Result<Vec<SearchResult>> {
         let results = sqlx::query_as::<_, SearchResult>(
             "SELECT c.id AS chunk_id, c.document_id, c.content, c.embedding <=> $1 AS distance, d.title
              FROM chunks c
@@ -194,7 +193,7 @@ impl VectorStore {
         .bind(document_id)
         .bind(tenant_id)
         .bind(limit)
-        .fetch_all(&self.pool)
+        .fetch_all(&mut **tx)
         .await?;
 
         Ok(results)

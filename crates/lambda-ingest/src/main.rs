@@ -100,25 +100,46 @@ async fn ingest_file(
     tenant_id: &str,
     title: &str,
 ) -> Result<IngestResult, Error> {
-    state.store.set_tenant(tenant_id).await?;
-
+    // Fetch and process document outside transaction (S3 + chunking)
     let obj = state.s3.get_object().bucket(bucket).key(key).send().await?;
     let bytes = obj.body.collect().await?.into_bytes();
-    let text = String::from_utf8_lossy(&bytes);
+    let text = String::from_utf8_lossy(&bytes).to_string();
+    let chunks_borrowed = state.chunker.chunk(&text);
 
-    let doc = state.store.insert_document(tenant_id, title, key).await?;
+    // Copy chunks to owned strings so they can be moved into the transaction closure
+    let chunks: Vec<String> = chunks_borrowed.iter().map(|s| s.to_string()).collect();
 
-    let chunks = state.chunker.chunk(&text);
-    for (i, chunk) in chunks.iter().enumerate() {
+    // Generate all embeddings before transaction (Bedrock API calls)
+    let mut embeddings = Vec::with_capacity(chunks.len());
+    for chunk in &chunks {
         let emb = state.embedder.embed(chunk).await?;
-        state.store.insert_chunk(doc.id, chunk, i as i32, &emb).await?;
+        embeddings.push(emb);
     }
 
-    tracing::info!(document_id = %doc.id, chunks = chunks.len(), key, "Ingested document");
+    // Now do all DB writes in one transaction
+    use docint_core::db;
+
+    let tenant_id_owned = tenant_id.to_string();
+    let title_owned = title.to_string();
+    let key_owned = key.to_string();
+
+    let (doc_id, chunk_count) = db::with_tenant(state.store.pool(), tenant_id, move |tx| {
+        Box::pin(async move {
+            let doc = VectorStore::insert_document_tx(tx, &tenant_id_owned, &title_owned, &key_owned).await?;
+
+            for (i, (chunk, emb)) in chunks.iter().zip(embeddings.iter()).enumerate() {
+                VectorStore::insert_chunk_tx(tx, doc.id, chunk, i as i32, emb).await?;
+            }
+
+            Ok((doc.id, chunks.len()))
+        })
+    }).await?;
+
+    tracing::info!(document_id = %doc_id, chunks = chunk_count, key, "Ingested document");
 
     Ok(IngestResult {
-        document_id: doc.id.to_string(),
-        chunks_created: chunks.len(),
+        document_id: doc_id.to_string(),
+        chunks_created: chunk_count,
         key: key.to_string(),
     })
 }

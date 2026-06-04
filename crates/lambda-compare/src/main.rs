@@ -59,17 +59,25 @@ async fn get_state() -> &'static AppState {
 }
 
 async fn handler(event: LambdaEvent<Request>) -> Result<Response, Error> {
+    use docint_core::db;
+
     let req = event.payload;
     let state = get_state().await;
     let limit = req.limit.unwrap_or(3);
-    state.store.set_tenant(&req.tenant_id).await?;
 
     let embedding = state.embedder.embed(&req.query).await?;
+    let tenant_id = req.tenant_id.clone();
+    let doc_id_a = req.document_id_a;
+    let doc_id_b = req.document_id_b;
+    let query = req.query.clone();
 
-    let (results_a, results_b) = tokio::try_join!(
-        state.store.search_within_document(&embedding, req.document_id_a, &req.tenant_id, limit),
-        state.store.search_within_document(&embedding, req.document_id_b, &req.tenant_id, limit),
-    )?;
+    let (results_a, results_b) = db::with_tenant(state.store.pool(), &req.tenant_id, move |tx| {
+        Box::pin(async move {
+            let a = VectorStore::search_within_document_tx(tx, &embedding, doc_id_a, &tenant_id, limit).await?;
+            let b = VectorStore::search_within_document_tx(tx, &embedding, doc_id_b, &tenant_id, limit).await?;
+            Ok((a, b))
+        })
+    }).await?;
 
     let to_doc_result = |results: Vec<docint_core::models::SearchResult>| -> DocResult {
         let title = results.first().map(|r| r.title.clone()).unwrap_or_default();
@@ -89,7 +97,7 @@ async fn handler(event: LambdaEvent<Request>) -> Result<Response, Error> {
     };
 
     Ok(Response {
-        query: req.query,
+        query,
         document_a: to_doc_result(results_a),
         document_b: to_doc_result(results_b),
     })

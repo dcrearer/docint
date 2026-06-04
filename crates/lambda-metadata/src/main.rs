@@ -54,23 +54,27 @@ fn to_doc_info(m: docint_core::models::DocumentMetadata) -> DocInfo {
 }
 
 async fn handler(event: LambdaEvent<Request>) -> Result<Response, Error> {
+    use docint_core::db;
+
     let req = event.payload;
     let store = get_store().await;
-    store.set_tenant(&req.tenant_id).await?;
+    let tenant_id = req.tenant_id.clone();
+    let document_id = req.document_id;
+    let limit = req.limit.unwrap_or(20);
 
-    let documents = if let Some(doc_id) = req.document_id {
-        match store.get_metadata(doc_id, &req.tenant_id).await? {
-            Some(m) => vec![to_doc_info(m)],
-            None => vec![],
-        }
-    } else {
-        store
-            .list_documents(&req.tenant_id, req.limit.unwrap_or(20))
-            .await?
-            .into_iter()
-            .map(to_doc_info)
-            .collect()
-    };
+    let documents = db::with_tenant(store.pool(), &req.tenant_id, move |tx| {
+        Box::pin(async move {
+            if let Some(doc_id) = document_id {
+                match VectorStore::get_metadata_tx(tx, doc_id, &tenant_id).await? {
+                    Some(m) => Ok(vec![to_doc_info(m)]),
+                    None => Ok(vec![]),
+                }
+            } else {
+                let docs = VectorStore::list_documents_tx(tx, &tenant_id, limit).await?;
+                Ok(docs.into_iter().map(to_doc_info).collect())
+            }
+        })
+    }).await?;
 
     Ok(Response { documents })
 }

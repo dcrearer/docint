@@ -7,7 +7,7 @@ use std::time::Duration;
 /// Create a connection pool. Called once on Lambda cold start via OnceCell.
 pub async fn create_pool(database_url: &str) -> Result<PgPool, sqlx::Error> {
     PgPoolOptions::new()
-        .max_connections(5)
+        .max_connections(1)
         .acquire_timeout(Duration::from_secs(3))
         .connect(database_url)
         .await

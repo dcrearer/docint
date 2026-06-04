@@ -40,7 +40,7 @@ docint/
 │   └── stacks/
 │       ├── auth_stack.py       # Cognito User Pool + auto-confirm trigger
 │       ├── database_stack.py   # Aurora Serverless v2 + VPC endpoints
-│       ├── lambda_stack.py     # 4 Lambdas (VPC, X-Ray, IAM) + S3 bucket with event triggers
+│       ├── lambda_stack.py     # 4 Lambdas (VPC, IAM) + S3 bucket with event triggers
 │       ├── gateway_stack.py    # AgentCore Gateway + MCP tool targets
 │       ├── agent_stack.py      # AgentCore Runtime (container) + Endpoint + Memory
 │       └── monitoring_stack.py # CloudWatch dashboard + alarms
@@ -70,7 +70,7 @@ export DOCINT_RUNTIME_ARN="arn:aws:bedrock-agentcore:us-east-1:<ACCOUNT_ID>:runt
 export DOCINT_CLIENT_ID="<COGNITO_CLIENT_ID>"
 
 # Launch interactive chat (sign up or login on first run)
-cargo run --bin docint-cli -- --chat
+cargo run --bin docint-cli
 ```
 
 On first run you'll see:
@@ -91,29 +91,18 @@ Chat commands:
 
 ## Ingest Documents
 
-Upload files to the S3 bucket — they're automatically ingested. Tenant is derived from the key prefix:
+Upload files to the S3 bucket — they're automatically ingested. Tenant is derived from the S3 key prefix, which should be your Cognito `sub` (UUID shown at login):
 
 ```bash
-# Ingest under tenant-1
-aws s3 cp my-notes.md s3://docint-docs-<ACCOUNT_ID>/tenant-1/notes/
+# Your Cognito sub is shown at login: ✓ Logged in as alice (tenant: a1b2c3d4-...)
+# Use it as the S3 key prefix:
+aws s3 cp my-notes.md s3://docint-docs-<ACCOUNT_ID>/a1b2c3d4-e5f6-7890-abcd-ef1234567890/docs/
 
-# Ingest under tenant-2
-aws s3 cp report.md s3://docint-docs-<ACCOUNT_ID>/tenant-2/docs/
-
-# Files without a tenant prefix fall back to DEFAULT_TENANT_ID (default: tenant-1)
-aws s3 cp misc.txt s3://docint-docs-<ACCOUNT_ID>/misc/
+# Sync an entire directory (only .md files)
+aws s3 sync ./my-docs/ s3://docint-docs-<ACCOUNT_ID>/a1b2c3d4-e5f6-7890-abcd-ef1234567890/ --exclude "*" --include "*.md"
 ```
 
 Supported formats: `.txt` `.md` `.csv` `.json` `.html` `.xml` `.yaml` `.yml` `.log` `.rst`
-
-Or invoke the ingest Lambda directly:
-
-```bash
-aws lambda invoke --function-name docint-ingest \
-  --cli-binary-format raw-in-base64-out \
-  --payload '{"bucket":"docint-docs-<ACCOUNT_ID>","key":"docs/guide.txt","tenant_id":"tenant-1","title":"My Guide"}' \
-  /tmp/out.json
-```
 
 ## Local Development
 
@@ -134,7 +123,7 @@ cd agent && python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 export GATEWAY_URL="https://<GATEWAY_ID>.gateway.bedrock-agentcore.us-east-1.amazonaws.com/mcp"
 export MODEL_ID="us.anthropic.claude-haiku-4-5-20251001-v1:0"
-python3 -c "from agent import invoke; print(invoke({'prompt':'What documents do you have?','tenant_id':'tenant-1'}))"
+python3 -c "from agent import invoke; print(invoke({'prompt':'What documents do you have?','tenant_id':'<YOUR_COGNITO_SUB>'}))"
 
 # 5. Test a Lambda locally
 cargo lambda watch --invoke-port 9001 &
@@ -188,7 +177,7 @@ cdk deploy --all
 - **SigV4 Gateway auth** — `mcp-proxy-for-aws` handles IAM signing for MCP connections
 - **Claude Haiku** — faster responses (~5-7s) vs Sonnet (~15s) for interactive use
 - **S3 event-driven ingestion** — upload a file, it's automatically chunked, embedded, and stored
-- **Tenant-from-key derivation** — S3 key prefix (e.g., `tenant-2/docs/file.md`) determines tenant_id automatically
+- **Tenant-from-key derivation** — S3 key prefix (e.g., `a1b2c3d4-.../docs/file.md`) determines tenant_id automatically
 - **Conversational memory** — AgentCore Memory with semantic, summary, and user preference strategies for cross-session recall
 - **Cognito `sub` as tenant ID** — UUID assigned by Cognito on sign-up, guarantees no collision, used for RLS and data isolation
 - **Auto-confirm Lambda trigger** — skips email verification for fast sign-up; easily reverted to email verification for production
@@ -206,9 +195,15 @@ cdk deploy --all
 - [x] Docs: update README with `--chat` usage, `MEMORY_ID` env var
 - [ ] Test: verify cross-session memory retrieval, tenant isolation, failure resilience
 
+### Authentication
+
+- [x] Cognito User Pool with self-signup and auto-confirm trigger
+- [x] CLI auth module (login, signup, logout, token cache)
+- [x] Tenant ID derived from Cognito `sub` (UUID)
+
 ### Ingestion
 
-- [x] S3 auto-ingest: derive `tenant_id` from S3 key prefix (e.g., `tenant-2/docs/file.md` → `tenant-2`)
+- [x] S3 auto-ingest: derive `tenant_id` from S3 key prefix (supports UUIDs and legacy tenant names)
 
 ### Performance
 
@@ -231,4 +226,5 @@ cdk deploy --all
 | Bedrock Embeddings | ~$0.30 |
 | VPC Endpoints | ~$21 |
 | S3 (document storage) | ~$0.02 |
+| Cognito (first 10K MAUs free) | $0 |
 | **Total** | **~$40** |

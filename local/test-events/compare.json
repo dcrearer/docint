@@ -2,6 +2,6 @@
   "query": "How does each language handle concurrency?",
   "document_id_a": "aaaaaaaa-0000-0000-0000-000000000001",
   "document_id_b": "bbbbbbbb-0000-0000-0000-000000000002",
-  "tenant_id": "tenant-1",
+  "tenant_id": "f438e448-90f1-7014-9137-307e65766e46",
   "limit": 2
 }

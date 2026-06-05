@@ -81,6 +81,7 @@ class GitHubOidcStack(Stack):
                     "secretsmanager:DescribeSecret",
                     "secretsmanager:GetSecretValue",
                     # VPC/Networking - for Lambda VPC configuration
+                    "ec2:DescribeAvailabilityZones",
                     "ec2:DescribeVpcs",
                     "ec2:DescribeSubnets",
                     "ec2:DescribeSecurityGroups",

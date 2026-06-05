@@ -35,7 +35,9 @@ static STORE: OnceCell<VectorStore> = OnceCell::const_new();
 async fn get_store() -> &'static VectorStore {
     STORE
         .get_or_init(|| async {
-            let url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set");
+            let url = db::resolve_database_url()
+                .await
+                .expect("Failed to resolve database credentials");
             let pool = db::create_pool(&url).await.expect("Failed to connect");
             VectorStore::new(pool)
         })
@@ -74,7 +76,8 @@ async fn handler(event: LambdaEvent<Request>) -> Result<Response, Error> {
                 Ok(docs.into_iter().map(to_doc_info).collect())
             }
         })
-    }).await?;
+    })
+    .await?;
 
     Ok(Response { documents })
 }

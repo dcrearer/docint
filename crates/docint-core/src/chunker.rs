@@ -9,8 +9,8 @@ const CHARS_PER_TOKEN: usize = 4;
 const MAX_CHUNK_CHARS: usize = 6000 * CHARS_PER_TOKEN;
 
 pub struct Chunker {
-    chunk_size: usize,  // in chars
-    overlap: usize,     // in chars
+    chunk_size: usize, // in chars
+    overlap: usize,    // in chars
 }
 
 impl Default for Chunker {
@@ -86,7 +86,10 @@ impl Chunker {
                     let break_at = if end == chunk.len() {
                         end
                     } else {
-                        chunk[pos..end].rfind(char::is_whitespace).map(|i| pos + i + 1).unwrap_or(end)
+                        chunk[pos..end]
+                            .rfind(char::is_whitespace)
+                            .map(|i| pos + i + 1)
+                            .unwrap_or(end)
                     };
                     let s = chunk[pos..break_at].trim();
                     if !s.is_empty() {

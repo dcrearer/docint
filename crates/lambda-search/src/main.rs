@@ -41,7 +41,9 @@ static STATE: OnceCell<AppState> = OnceCell::const_new();
 async fn get_state() -> &'static AppState {
     STATE
         .get_or_init(|| async {
-            let url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set");
+            let url = db::resolve_database_url()
+                .await
+                .expect("Failed to resolve database credentials");
             let pool = db::create_pool(&url)
                 .await
                 .expect("Failed to connect to database");
@@ -68,7 +70,8 @@ async fn handler(event: LambdaEvent<Request>) -> Result<Response, Error> {
         Box::pin(async move {
             VectorStore::hybrid_search_tx(tx, &embedding, &query, &tenant_id, limit).await
         })
-    }).await?;
+    })
+    .await?;
 
     Ok(Response {
         results: results

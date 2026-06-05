@@ -33,7 +33,10 @@ fn decode_jwt_payload(token: &str) -> Result<serde_json::Value> {
 fn session_from_token(id_token: &str) -> Result<Session> {
     let claims = decode_jwt_payload(id_token)?;
     Ok(Session {
-        tenant_id: claims["sub"].as_str().context("Missing sub claim")?.to_string(),
+        tenant_id: claims["sub"]
+            .as_str()
+            .context("Missing sub claim")?
+            .to_string(),
         username: claims["cognito:username"]
             .as_str()
             .context("Missing username claim")?
@@ -90,7 +93,12 @@ pub async fn try_restore_session(client: &Client, client_id: &str) -> Option<Ses
     session_from_token(&id_token).ok()
 }
 
-async fn authenticate(client: &Client, client_id: &str, username: &str, password: &str) -> Result<Session> {
+async fn authenticate(
+    client: &Client,
+    client_id: &str,
+    username: &str,
+    password: &str,
+) -> Result<Session> {
     let resp = client
         .initiate_auth()
         .auth_flow(aws_sdk_cognitoidentityprovider::types::AuthFlowType::UserPasswordAuth)

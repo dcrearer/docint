@@ -48,7 +48,9 @@ static STATE: OnceCell<AppState> = OnceCell::const_new();
 async fn get_state() -> &'static AppState {
     STATE
         .get_or_init(|| async {
-            let url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set");
+            let url = db::resolve_database_url()
+                .await
+                .expect("Failed to resolve database credentials");
             let pool = db::create_pool(&url).await.expect("Failed to connect");
             AppState {
                 store: VectorStore::new(pool),
@@ -73,15 +75,23 @@ async fn handler(event: LambdaEvent<Request>) -> Result<Response, Error> {
 
     let (results_a, results_b) = db::with_tenant(state.store.pool(), &req.tenant_id, move |tx| {
         Box::pin(async move {
-            let a = VectorStore::search_within_document_tx(tx, &embedding, doc_id_a, &tenant_id, limit).await?;
-            let b = VectorStore::search_within_document_tx(tx, &embedding, doc_id_b, &tenant_id, limit).await?;
+            let a =
+                VectorStore::search_within_document_tx(tx, &embedding, doc_id_a, &tenant_id, limit)
+                    .await?;
+            let b =
+                VectorStore::search_within_document_tx(tx, &embedding, doc_id_b, &tenant_id, limit)
+                    .await?;
             Ok((a, b))
         })
-    }).await?;
+    })
+    .await?;
 
     let to_doc_result = |results: Vec<docint_core::models::SearchResult>| -> DocResult {
         let title = results.first().map(|r| r.title.clone()).unwrap_or_default();
-        let doc_id = results.first().map(|r| r.document_id.to_string()).unwrap_or_default();
+        let doc_id = results
+            .first()
+            .map(|r| r.document_id.to_string())
+            .unwrap_or_default();
         DocResult {
             document_id: doc_id,
             title,

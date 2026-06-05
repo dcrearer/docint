@@ -37,9 +37,9 @@ class LambdaStack(Stack):
         ))
         database.cluster.secret.grant_read(role)
 
-        # Build DATABASE_URL from secret
+        # Pass secret ARN instead of plaintext credentials
+        # Lambdas will resolve this at runtime using the AWS SDK
         secret = database.cluster.secret
-        db_url = f"postgres://{{{{resolve:secretsmanager:{secret.secret_arn}:SecretString:username}}}}:{{{{resolve:secretsmanager:{secret.secret_arn}:SecretString:password}}}}@{database.cluster.cluster_endpoint.hostname}:5432/docint"
 
         common = dict(
             runtime=_lambda.Runtime.PROVIDED_AL2023,
@@ -48,7 +48,13 @@ class LambdaStack(Stack):
             role=role,
             memory_size=512,
             timeout=Duration.seconds(30),
-            environment={"DATABASE_URL": db_url, "RUST_LOG": "info"},
+            environment={
+                "DB_SECRET_ARN": secret.secret_arn,
+                "DB_HOST": database.cluster.cluster_endpoint.hostname,
+                "DB_PORT": "5432",
+                "DB_NAME": "docint",
+                "RUST_LOG": "info",
+            },
             vpc=database.vpc,
             vpc_subnets=ec2.SubnetSelection(subnet_type=ec2.SubnetType.PRIVATE_ISOLATED),
             security_groups=[lambda_sg],

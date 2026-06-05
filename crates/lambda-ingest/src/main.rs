@@ -79,7 +79,9 @@ static STATE: OnceCell<AppState> = OnceCell::const_new();
 async fn get_state() -> &'static AppState {
     STATE
         .get_or_init(|| async {
-            let url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set");
+            let url = db::resolve_database_url()
+                .await
+                .expect("Failed to resolve database credentials");
             let pool = db::create_pool(&url).await.expect("Failed to connect");
             let config = aws_config::load_defaults(aws_config::BehaviorVersion::latest()).await;
             AppState {
@@ -125,7 +127,9 @@ async fn ingest_file(
 
     let (doc_id, chunk_count) = db::with_tenant(state.store.pool(), tenant_id, move |tx| {
         Box::pin(async move {
-            let doc = VectorStore::insert_document_tx(tx, &tenant_id_owned, &title_owned, &key_owned).await?;
+            let doc =
+                VectorStore::insert_document_tx(tx, &tenant_id_owned, &title_owned, &key_owned)
+                    .await?;
 
             for (i, (chunk, emb)) in chunks.iter().zip(embeddings.iter()).enumerate() {
                 VectorStore::insert_chunk_tx(tx, doc.id, chunk, i as i32, emb).await?;
@@ -133,7 +137,8 @@ async fn ingest_file(
 
             Ok((doc.id, chunks.len()))
         })
-    }).await?;
+    })
+    .await?;
 
     tracing::info!(document_id = %doc_id, chunks = chunk_count, key, "Ingested document");
 
@@ -176,7 +181,9 @@ async fn handler(event: LambdaEvent<IngestEvent>) -> Result<Response, Error> {
             for record in s3_event.records {
                 // URL-decode the key (S3 encodes spaces as +)
                 let key = record.s3.object.key.replace('+', " ");
-                let key = urlencoding::decode(&key).map(|s| s.into_owned()).unwrap_or(key);
+                let key = urlencoding::decode(&key)
+                    .map(|s| s.into_owned())
+                    .unwrap_or(key);
                 let tenant_id = tenant_from_key(&key, &default_tenant);
                 let title = title_from_key(&key);
                 match ingest_file(state, &record.s3.bucket.name, &key, tenant_id, &title).await {
@@ -207,12 +214,18 @@ mod tests {
 
     #[test]
     fn tenant_from_key_uuid_prefix() {
-        assert_eq!(tenant_from_key("a1b2c3d4-e5f6/docs/file.md", "default"), "a1b2c3d4-e5f6");
+        assert_eq!(
+            tenant_from_key("a1b2c3d4-e5f6/docs/file.md", "default"),
+            "a1b2c3d4-e5f6"
+        );
     }
 
     #[test]
     fn tenant_from_key_legacy_prefix() {
-        assert_eq!(tenant_from_key("tenant-2/docs/file.md", "default"), "tenant-2");
+        assert_eq!(
+            tenant_from_key("tenant-2/docs/file.md", "default"),
+            "tenant-2"
+        );
     }
 
     #[test]

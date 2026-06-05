@@ -45,20 +45,75 @@ class GitHubOidcStack(Stack):
                 conditions={
                     "StringEquals": {
                         "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",
-                    },
-                    "StringLike": {
-                        # CHANGE THIS to your repo: "your-username/docint"
-                        "token.actions.githubusercontent.com:sub": "repo:dcrearer/docint:*",
+                        # Restrict to main branch only - prevents malicious workflows on other branches
+                        "token.actions.githubusercontent.com:sub": "repo:dcrearer/docint:ref:refs/heads/main",
                     },
                 },
                 assume_role_action="sts:AssumeRoleWithWebIdentity",
             ),
         )
 
-        # Permissions the deploy role needs.
-        # CloudFormation + CDK need broad permissions to create resources.
-        role.add_managed_policy(
-            iam.ManagedPolicy.from_aws_managed_policy_name("AdministratorAccess")
+        # Permissions the deploy role needs (scoped to only what CDK deployment requires).
+        # This replaces AdministratorAccess with least-privilege permissions.
+        role.add_to_policy(
+            iam.PolicyStatement(
+                actions=[
+                    # CloudFormation - for CDK deployments
+                    "cloudformation:*",
+                    # Lambda - deployment and configuration
+                    "lambda:*",
+                    # IAM - only PassRole for Lambda execution roles
+                    "iam:GetRole",
+                    "iam:PassRole",
+                    "iam:CreateRole",
+                    "iam:DeleteRole",
+                    "iam:AttachRolePolicy",
+                    "iam:DetachRolePolicy",
+                    "iam:PutRolePolicy",
+                    "iam:DeleteRolePolicy",
+                    "iam:GetRolePolicy",
+                    "iam:TagRole",
+                    "iam:UntagRole",
+                    # RDS - read-only for connection info
+                    "rds:DescribeDBClusters",
+                    "rds:DescribeDBInstances",
+                    # Secrets Manager - read secret ARNs
+                    "secretsmanager:DescribeSecret",
+                    "secretsmanager:GetSecretValue",
+                    # VPC/Networking - for Lambda VPC configuration
+                    "ec2:DescribeVpcs",
+                    "ec2:DescribeSubnets",
+                    "ec2:DescribeSecurityGroups",
+                    "ec2:DescribeNetworkInterfaces",
+                    "ec2:DescribeVpcEndpoints",
+                    "ec2:CreateVpcEndpoint",
+                    "ec2:DeleteVpcEndpoint",
+                    "ec2:ModifyVpcEndpoint",
+                    "ec2:CreateSecurityGroup",
+                    "ec2:DeleteSecurityGroup",
+                    "ec2:AuthorizeSecurityGroupIngress",
+                    "ec2:AuthorizeSecurityGroupEgress",
+                    "ec2:RevokeSecurityGroupIngress",
+                    "ec2:RevokeSecurityGroupEgress",
+                    "ec2:CreateTags",
+                    "ec2:DeleteTags",
+                    # S3 - for document storage bucket
+                    "s3:*",
+                    # Cognito - for authentication
+                    "cognito-idp:*",
+                    # Bedrock - for AgentCore and embeddings
+                    "bedrock:*",
+                    "bedrock-agentcore:*",
+                    # CloudWatch - for monitoring
+                    "cloudwatch:*",
+                    "logs:*",
+                    # SSM - for CDK context values
+                    "ssm:GetParameter",
+                    "ssm:PutParameter",
+                    "ssm:DeleteParameter",
+                ],
+                resources=["*"],
+            )
         )
 
         CfnOutput(

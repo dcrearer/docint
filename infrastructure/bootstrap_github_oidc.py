@@ -100,6 +100,20 @@ class GitHubOidcStack(Stack):
                     "ec2:DeleteTags",
                     # S3 - for document storage bucket
                     "s3:*",
+                    # ECR - for container image publishing (AgentStack)
+                    "ecr:GetAuthorizationToken",
+                    "ecr:BatchCheckLayerAvailability",
+                    "ecr:GetDownloadUrlForLayer",
+                    "ecr:BatchGetImage",
+                    "ecr:PutImage",
+                    "ecr:InitiateLayerUpload",
+                    "ecr:UploadLayerPart",
+                    "ecr:CompleteLayerUpload",
+                    "ecr:DescribeRepositories",
+                    "ecr:CreateRepository",
+                    "ecr:DeleteRepository",
+                    "ecr:SetRepositoryPolicy",
+                    "ecr:GetRepositoryPolicy",
                     # Cognito - for authentication
                     "cognito-idp:*",
                     # Bedrock - for AgentCore and embeddings

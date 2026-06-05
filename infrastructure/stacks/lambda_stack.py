@@ -12,40 +12,62 @@ from stacks.database_stack import DatabaseStack
 
 
 class LambdaStack(Stack):
-    def __init__(self, scope: Construct, id: str, database: DatabaseStack, **kwargs):
-        super().__init__(scope, id, **kwargs)
+    def _create_lambda_role(self, name: str, database: DatabaseStack) -> iam.Role:
+        """Create a base Lambda role with VPC and database access.
 
-        # Security group for Lambdas
-        lambda_sg = database.lambda_sg
-
-        # Shared role
+        All Lambdas need:
+        - CloudWatch Logs access (AWSLambdaBasicExecutionRole)
+        - VPC networking (AWSLambdaVPCAccessExecutionRole)
+        - Database secret read access
+        """
         role = iam.Role(
-            self, "LambdaRole",
+            self, name,
             assumed_by=iam.ServicePrincipal("lambda.amazonaws.com"),
             managed_policies=[
                 iam.ManagedPolicy.from_aws_managed_policy_name("service-role/AWSLambdaBasicExecutionRole"),
                 iam.ManagedPolicy.from_aws_managed_policy_name("service-role/AWSLambdaVPCAccessExecutionRole"),
             ],
         )
-        role.add_to_policy(iam.PolicyStatement(
+        # All Lambdas need to read database credentials from Secrets Manager
+        database.cluster.secret.grant_read(role)
+        return role
+
+    def __init__(self, scope: Construct, id: str, database: DatabaseStack, **kwargs):
+        super().__init__(scope, id, **kwargs)
+
+        # Security group for Lambdas
+        lambda_sg = database.lambda_sg
+
+        # Role 1: Query role (search + compare) - needs Bedrock for embeddings
+        query_role = self._create_lambda_role("QueryRole", database)
+        query_role.add_to_policy(iam.PolicyStatement(
             actions=["bedrock:InvokeModel"],
             resources=["arn:aws:bedrock:*::foundation-model/amazon.titan-embed-text-v2:0"],
         ))
-        role.add_to_policy(iam.PolicyStatement(
+
+        # Role 2: Metadata role - only needs database (no S3, no Bedrock)
+        metadata_role = self._create_lambda_role("MetadataRole", database)
+
+        # Role 3: Ingest role - needs S3 + Bedrock for document processing
+        ingest_role = self._create_lambda_role("IngestRole", database)
+        ingest_role.add_to_policy(iam.PolicyStatement(
+            actions=["bedrock:InvokeModel"],
+            resources=["arn:aws:bedrock:*::foundation-model/amazon.titan-embed-text-v2:0"],
+        ))
+        ingest_role.add_to_policy(iam.PolicyStatement(
             actions=["s3:GetObject"],
             resources=["arn:aws:s3:::docint-*/*"],
         ))
-        database.cluster.secret.grant_read(role)
 
         # Pass secret ARN instead of plaintext credentials
         # Lambdas will resolve this at runtime using the AWS SDK
         secret = database.cluster.secret
 
-        common = dict(
+        # Common settings for all Lambdas (role is specified per-Lambda)
+        common_base = dict(
             runtime=_lambda.Runtime.PROVIDED_AL2023,
             architecture=_lambda.Architecture.ARM_64,
             handler="bootstrap",
-            role=role,
             memory_size=512,
             timeout=Duration.seconds(30),
             environment={
@@ -64,29 +86,34 @@ class LambdaStack(Stack):
             self, "SearchFn",
             function_name="docint-search",
             code=_lambda.Code.from_asset("../target/lambda/lambda-search"),
-            **common,
+            role=query_role,  # Needs Bedrock for query embeddings
+            **common_base,
         )
 
         self.metadata_fn = _lambda.Function(
             self, "MetadataFn",
             function_name="docint-metadata",
             code=_lambda.Code.from_asset("../target/lambda/lambda-metadata"),
-            **common,
+            role=metadata_role,  # DB access only, no S3 or Bedrock
+            **common_base,
         )
 
         self.compare_fn = _lambda.Function(
             self, "CompareFn",
             function_name="docint-compare",
             code=_lambda.Code.from_asset("../target/lambda/lambda-compare"),
-            **common,
+            role=query_role,  # Needs Bedrock for query embeddings (shares with search)
+            **common_base,
         )
 
+        # Ingest Lambda needs longer timeout for processing large documents
         self.ingest_fn = _lambda.Function(
             self, "IngestFn",
             function_name="docint-ingest",
             code=_lambda.Code.from_asset("../target/lambda/lambda-ingest"),
-            timeout=Duration.minutes(5),
-            **{k: v for k, v in common.items() if k != "timeout"},
+            role=ingest_role,  # Needs S3 + Bedrock for document processing
+            timeout=Duration.minutes(5),  # Override default 30s timeout
+            **{k: v for k, v in common_base.items() if k != "timeout"},
         )
 
         # S3 bucket for document ingestion with auto-trigger
@@ -95,7 +122,8 @@ class LambdaStack(Stack):
             bucket_name=f"docint-docs-{self.account}",
             encryption=s3.BucketEncryption.S3_MANAGED,
         )
-        self.docs_bucket.grant_read(role)
+        # Only ingest Lambda needs S3 access
+        self.docs_bucket.grant_read(ingest_role)
 
         # Trigger ingest Lambda on supported text file uploads
         for suffix in [".txt", ".md", ".csv", ".json", ".html", ".xml", ".yaml", ".yml", ".log", ".rst"]:

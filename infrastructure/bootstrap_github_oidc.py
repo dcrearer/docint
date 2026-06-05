@@ -58,6 +58,8 @@ class GitHubOidcStack(Stack):
         role.add_to_policy(
             iam.PolicyStatement(
                 actions=[
+                    # STS - for assuming CDK bootstrap roles
+                    "sts:AssumeRole",
                     # CloudFormation - for CDK deployments
                     "cloudformation:*",
                     # Lambda - deployment and configuration
@@ -110,10 +112,14 @@ class GitHubOidcStack(Stack):
                     "ecr:UploadLayerPart",
                     "ecr:CompleteLayerUpload",
                     "ecr:DescribeRepositories",
+                    "ecr:DescribeImages",
+                    "ecr:ListImages",
                     "ecr:CreateRepository",
                     "ecr:DeleteRepository",
                     "ecr:SetRepositoryPolicy",
                     "ecr:GetRepositoryPolicy",
+                    "ecr:GetLifecyclePolicy",
+                    "ecr:PutLifecyclePolicy",
                     # Cognito - for authentication
                     "cognito-idp:*",
                     # Bedrock - for AgentCore and embeddings

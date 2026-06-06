@@ -1,0 +1,29 @@
+version: '3.9'
+
+services:
+  test-db:
+    image: pgvector/pgvector:pg16
+    container_name: docint-test-db
+    environment:
+      POSTGRES_DB: postgres
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5433:5432"
+    volumes:
+      - test-db-data:/var/lib/postgresql/data
+      - ./scripts/init-test-db.sql:/docker-entrypoint-initdb.d/init-test-db.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - docint-test
+
+volumes:
+  test-db-data:
+
+networks:
+  docint-test:
+    driver: bridge

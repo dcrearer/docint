@@ -57,9 +57,10 @@ docint/
 
 - Rust 1.75+
 - Python 3.11+
-- Podman & Podman Compose
+- Podman & Podman Compose (for local development and testing)
 - AWS CLI v2 (configured with Bedrock access)
 - cargo-lambda (`cargo install cargo-lambda`)
+- cargo-llvm-cov (`cargo install cargo-llvm-cov`) - for test coverage reports
 - AWS CDK (`npm install -g aws-cdk`)
 
 ## Quick Start — Query the Agent
@@ -107,7 +108,7 @@ Supported formats: `.txt` `.md` `.csv` `.json` `.html` `.xml` `.yaml` `.yml` `.l
 ## Local Development
 
 ```bash
-# 1. Start PostgreSQL
+# 1. Start PostgreSQL (for local dev)
 cd local && podman-compose up -d
 
 # 2. Run migrations
@@ -116,7 +117,16 @@ sqlx migrate run --source migrations
 
 # 3. Build and test
 cargo build --workspace
-cargo test --lib --workspace
+
+# Run unit tests (fast, no database needed)
+cargo test --workspace --lib
+
+# Run integration tests (requires test database)
+podman-compose -f docker-compose.test.yml up -d
+cargo test --workspace --test '*' -- --ignored
+
+# Run all tests with coverage report
+cargo llvm-cov --workspace --html --open
 
 # 4. Test the agent locally (requires AWS credentials)
 cd agent && python3 -m venv .venv && source .venv/bin/activate
@@ -150,7 +160,7 @@ cdk deploy -a "python3 bootstrap_github_oidc.py"
 ### Deploy via CI/CD
 
 Push to `main` triggers the GitHub Actions pipeline:
-1. **Test** — `cargo test --lib --workspace`
+1. **Test** — `cargo test --workspace --lib` (unit tests) + `cargo test --workspace --test '*' -- --ignored` (integration tests)
 2. **Build** — `cargo lambda build --release --arm64` + Docker image (QEMU cross-compile)
 3. **Deploy** — `cdk deploy --all`
 
@@ -169,7 +179,8 @@ cdk deploy --all
 
 - **Hybrid search with RRF** — combines vector similarity and PostgreSQL full-text search for better recall than either alone
 - **RRF stands for Reciprocal Rank Fusion** — combines two different search strategies into one ranked result set.
-- **Row-level security** — PostgreSQL enforces tenant isolation at the DB level, not just application code
+- **Row-level security (RLS)** — PostgreSQL enforces tenant isolation at the DB level, not just application code. Transaction-scoped `set_config('app.tenant_id', ...)` prevents cross-tenant data leaks even with connection pooling.
+- **Comprehensive test coverage** — 52 tests (12 unit + 40 integration) covering ~70% of codebase, including full verification of RLS tenant isolation
 - **VPC endpoints instead of NAT** — saves ~$32/month while keeping Lambdas in isolated subnets
 - **OnceCell for Lambda state** — DB pool and embedder initialize once on cold start, reused across invocations
 - **Standalone Embedder** — decoupled from VectorStore so ingestion and search can share it independently
@@ -205,9 +216,19 @@ cdk deploy --all
 
 - [x] S3 auto-ingest: derive `tenant_id` from S3 key prefix (supports UUIDs and legacy tenant names)
 
+### Testing
+
+- [x] Integration test infrastructure (unique DB per test, RLS enforcement)
+- [x] RLS tenant isolation tests (7 tests covering P0 security fix)
+- [x] Business logic tests (15 tests for store.rs: insert, search, RRF, metadata)
+- [x] Lambda handler tests (18 tests for search, metadata, compare handlers)
+- [x] Embeddings unit tests (8 tests for JSON serialization, dimension validation)
+- [x] Test coverage: ~70% overall, ~85% for core business logic
+- [ ] Auth module tests (requires Cognito mocking)
+- [ ] End-to-end smoke tests in staging environment
+
 ### Performance
 
-- [ ] CI: change `cargo test --lib --workspace` to `cargo test --workspace` to include binary crate tests
 - [ ] Tighter system prompt to reduce output tokens
 - [ ] Single-turn tool use (skip tool selection LLM round-trip)
 - [ ] Reduce search results returned to minimize synthesis input

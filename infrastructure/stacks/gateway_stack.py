@@ -77,10 +77,9 @@ class GatewayStack(Stack):
             description="Hybrid vector + full-text search over documents",
             properties={
                 "query": {"type": "string", "description": "Search query text"},
-                "tenant_id": {"type": "string", "description": "Tenant identifier"},
                 "limit": {"type": "integer", "description": "Max results to return"},
             },
-            required=["query", "tenant_id"],
+            required=["query"],
         )
 
         _tool_target(
@@ -90,11 +89,10 @@ class GatewayStack(Stack):
             tool_name="get-document-metadata",
             description="List documents or get metadata for a specific document",
             properties={
-                "tenant_id": {"type": "string", "description": "Tenant identifier"},
                 "document_id": {"type": "string", "description": "Optional document ID"},
                 "limit": {"type": "integer", "description": "Max documents to list"},
             },
-            required=["tenant_id"],
+            required=[],
         )
 
         _tool_target(
@@ -107,8 +105,7 @@ class GatewayStack(Stack):
                 "query": {"type": "string", "description": "Comparison query"},
                 "document_id_a": {"type": "string", "description": "First document ID"},
                 "document_id_b": {"type": "string", "description": "Second document ID"},
-                "tenant_id": {"type": "string", "description": "Tenant identifier"},
                 "limit": {"type": "integer", "description": "Max matches per document"},
             },
-            required=["query", "document_id_a", "document_id_b", "tenant_id"],
+            required=["query", "document_id_a", "document_id_b"],
         )

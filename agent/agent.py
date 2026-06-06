@@ -3,6 +3,7 @@ import os
 import sys
 import logging
 import traceback
+from typing import Any, Dict
 
 logging.basicConfig(level=logging.INFO, stream=sys.stderr)
 logger = logging.getLogger(__name__)
@@ -48,11 +49,30 @@ CRITICAL: Always use search_documents for ANY question about document content, t
 Never assume documents are empty or unavailable based on memory — document state changes between sessions.
 Always call the tool first, then respond based on actual results.
 
-Use search_documents to find information across the document corpus.
-Use get_document_metadata to list available documents or get details.
-Use compare_documents to compare two documents side-by-side.
+Available tools:
+- search_documents: Find information across the document corpus using hybrid vector + full-text search
+- get_document_metadata: List available documents or get details about a specific document
+- compare_documents: Compare two documents side-by-side for a given query
+
+NOTE: You only see documents belonging to the authenticated user. Tenant isolation is handled automatically.
 
 Always cite sources with document titles. Be concise and accurate."""
+
+
+class TenantInjectorMCPClient(MCPClient):
+    """MCP client wrapper that automatically injects tenant_id into all tool calls."""
+
+    def __init__(self, tenant_id: str, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.tenant_id = tenant_id
+        logger.info(f"TenantInjectorMCPClient initialized with tenant_id={tenant_id}")
+
+    async def __call__(self, tool_name: str, tool_input: Dict[str, Any]) -> Any:
+        """Intercept tool calls and inject tenant_id automatically."""
+        # Inject tenant_id into all tool calls
+        tool_input_with_tenant = {**tool_input, "tenant_id": self.tenant_id}
+        logger.info(f"Tool call: {tool_name} with injected tenant_id={self.tenant_id}")
+        return await super().__call__(tool_name, tool_input_with_tenant)
 
 
 @app.entrypoint
@@ -63,6 +83,8 @@ async def invoke(payload):
         tenant_id = payload.get("tenant_id", "tenant-1")
         actor_id = payload.get("actor_id", tenant_id)
         session_id = payload.get("session_id", "default")
+
+        logger.info(f"Invocation: tenant_id={tenant_id}, actor={actor_id}, session={session_id}")
 
         session_manager = None
         if MEMORY_ID:
@@ -88,15 +110,28 @@ async def invoke(payload):
         else:
             logger.warning("MEMORY_ID not set, skipping memory")
 
+        # Wrap MCP client with tenant_id injector
+        tenant_aware_mcp = None
+        if mcp_client:
+            tenant_aware_mcp = TenantInjectorMCPClient(
+                tenant_id,
+                lambda: aws_iam_streamablehttp_client(
+                    endpoint=GATEWAY_URL,
+                    aws_region=AWS_REGION,
+                    aws_service="bedrock-agentcore",
+                )
+            )
+
         agent = Agent(
             model=model,
             system_prompt=SYSTEM_PROMPT,
-            tools=[mcp_client] if mcp_client else [],
+            tools=[tenant_aware_mcp] if tenant_aware_mcp else [],
             session_manager=session_manager,
         )
 
         try:
-            async for event in agent.stream_async(f"[tenant_id={tenant_id}] {query}"):
+            # No longer need to prefix query with tenant_id since it's injected
+            async for event in agent.stream_async(query):
                 if isinstance(event, dict) and "data" in event:
                     yield event["data"]
         finally:

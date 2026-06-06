@@ -59,20 +59,23 @@ NOTE: You only see documents belonging to the authenticated user. Tenant isolati
 Always cite sources with document titles. Be concise and accurate."""
 
 
-class TenantInjectorMCPClient(MCPClient):
-    """MCP client wrapper that automatically injects tenant_id into all tool calls."""
+class TenantInjectorMCPClient:
+    """Wrapper that injects tenant_id into all MCP tool calls."""
 
-    def __init__(self, tenant_id: str, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(self, tenant_id: str, mcp_client: MCPClient):
         self.tenant_id = tenant_id
+        self.mcp_client = mcp_client
         logger.info(f"TenantInjectorMCPClient initialized with tenant_id={tenant_id}")
 
     async def __call__(self, tool_name: str, tool_input: Dict[str, Any]) -> Any:
         """Intercept tool calls and inject tenant_id automatically."""
-        # Inject tenant_id into all tool calls
         tool_input_with_tenant = {**tool_input, "tenant_id": self.tenant_id}
         logger.info(f"Tool call: {tool_name} with injected tenant_id={self.tenant_id}")
-        return await super().__call__(tool_name, tool_input_with_tenant)
+        return await self.mcp_client(tool_name, tool_input_with_tenant)
+
+    def __getattr__(self, name):
+        """Delegate all other attributes to the wrapped client."""
+        return getattr(self.mcp_client, name)
 
 
 @app.entrypoint
@@ -113,14 +116,7 @@ async def invoke(payload):
         # Wrap MCP client with tenant_id injector
         tenant_aware_mcp = None
         if mcp_client:
-            tenant_aware_mcp = TenantInjectorMCPClient(
-                tenant_id,
-                lambda: aws_iam_streamablehttp_client(
-                    endpoint=GATEWAY_URL,
-                    aws_region=AWS_REGION,
-                    aws_service="bedrock-agentcore",
-                )
-            )
+            tenant_aware_mcp = TenantInjectorMCPClient(tenant_id, mcp_client)
 
         agent = Agent(
             model=model,

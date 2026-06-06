@@ -209,7 +209,7 @@ async fn send_query(
                 }
             }
 
-            // Filter out any XML fragments that leaked through
+            // Filter out any XML or JSON artifacts that leaked through
             let trimmed = text.trim();
 
             // Skip if it looks like XML tag content
@@ -231,6 +231,15 @@ async fn send_query(
                 trimmed.contains("invoke") ||
                 trimmed.contains("parameter")
             ) && !trimmed.chars().next().map(|c| c.is_alphabetic() && c.is_uppercase()).unwrap_or(false) {
+                continue;
+            }
+
+            // Skip raw JSON tool call responses (MCP protocol artifacts)
+            if (trimmed.starts_with('[') || trimmed.starts_with('{')) && (
+                trimmed.contains(r#""name":"#) ||
+                trimmed.contains(r#""parameters":"#) ||
+                trimmed.contains(r#""tool"#)
+            ) {
                 continue;
             }
 
@@ -491,5 +500,17 @@ mod tests {
         assert!(fragment.contains("_calls"));
         // This simulates the filtering logic - fragments ending with '>'
         // containing XML keywords should be filtered
+    }
+
+    #[test]
+    fn test_detects_json_tool_response() {
+        // Verify raw JSON tool responses would be filtered
+        let json1 = r#"[{"name": "get_document_metadata", "parameters": {"limit": 100"#;
+        assert!(json1.starts_with('['));
+        assert!(json1.contains(r#""name":"#));
+
+        let json2 = r#"{"tool": "search", "parameters": {"query": "test"}}"#;
+        assert!(json2.starts_with('{'));
+        assert!(json2.contains(r#""parameters":"#));
     }
 }

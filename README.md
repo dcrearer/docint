@@ -105,6 +105,75 @@ aws s3 sync ./my-docs/ s3://docint-docs-<ACCOUNT_ID>/a1b2c3d4-e5f6-7890-abcd-ef1
 
 Supported formats: `.txt` `.md` `.csv` `.json` `.html` `.xml` `.yaml` `.yml` `.log` `.rst`
 
+## Testing
+
+The project has comprehensive test coverage (~70%) across Rust and Python code.
+
+### Quick Test Commands
+
+```bash
+# Rust: Run all unit tests (no database needed)
+cargo test --workspace --lib
+
+# Rust: Run integration tests (requires test database)
+podman-compose -f docker-compose.test.yml up -d
+cargo test --workspace --test '*' -- --ignored
+
+# Rust: Generate coverage report
+cargo llvm-cov --workspace --html --open
+
+# Python: Run agent unit tests
+cd agent
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements-dev.txt
+pytest test_agent.py -v
+
+# Python: Run with coverage
+pytest test_agent.py --cov=agent --cov-report=html
+```
+
+### Test Categories
+
+| Type | Count | Command | Dependencies |
+|------|-------|---------|--------------|
+| **Rust Unit** | 15 CLI tests | `cargo test --bin docint-cli` | None |
+| **Rust Integration** | 40 tests | `cargo test --workspace --test '*' -- --ignored` | Test DB (podman) |
+| **Python Unit** | 12 tests | `cd agent && pytest test_agent.py -v` | venv + requirements-dev.txt |
+| **Total** | **67 tests** | `cargo test --workspace && cd agent && pytest` | Both |
+
+### Test Database Setup
+
+Integration tests use a dedicated PostgreSQL instance:
+
+```bash
+# Start test database (PostgreSQL 16 + pgvector on port 5433)
+podman-compose -f docker-compose.test.yml up -d
+
+# Each test creates a unique database: docint_test_<uuid>
+# Tests run in parallel with full isolation
+# Non-privileged test_user enforces RLS policies
+
+# Stop test database
+podman-compose -f docker-compose.test.yml down
+```
+
+### What's Tested
+
+**Rust (docint-core + lambdas):**
+- ✅ RLS tenant isolation (7 tests)
+- ✅ Store business logic: search, RRF, insert, metadata (22 tests)
+- ✅ Lambda handlers: search, metadata, compare (18 tests)
+- ✅ Embeddings: JSON, dimension validation, Unicode (8 tests)
+- ✅ CLI: tool call parsing, SSE extraction, XML filtering (15 tests)
+
+**Python (agent):**
+- ✅ TenantInjectorMCPClient: injection, delegation, isolation (9 tests)
+- ✅ System prompt: parameter documentation, workflow guidance (3 tests)
+
+**Coverage:** ~70% overall (85% core business logic)
+
+See `docs/TEST-COVERAGE-FINAL.md` for detailed breakdown.
+
 ## Local Development
 
 ```bash
@@ -115,23 +184,8 @@ cd local && podman-compose up -d
 export DATABASE_URL="postgres://docint:docint_local@localhost:5432/docint"
 sqlx migrate run --source migrations
 
-# 3. Build and test
+# 3. Build
 cargo build --workspace
-
-# Run unit tests (fast, no database needed)
-cargo test --workspace --lib
-
-# Run integration tests (requires test database)
-podman-compose -f docker-compose.test.yml up -d
-cargo test --workspace --test '*' -- --ignored
-
-# Run all tests with coverage report
-cargo llvm-cov --workspace --html --open
-
-# Run Python unit tests (agent code)
-cd agent && python3 -m venv .venv && source .venv/bin/activate
-pip install -r requirements-dev.txt
-pytest test_agent.py -v
 
 # 4. Test the agent locally (requires AWS credentials)
 cd agent && python3 -m venv .venv && source .venv/bin/activate

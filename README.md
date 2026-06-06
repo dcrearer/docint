@@ -128,6 +128,11 @@ cargo test --workspace --test '*' -- --ignored
 # Run all tests with coverage report
 cargo llvm-cov --workspace --html --open
 
+# Run Python unit tests (agent code)
+cd agent && python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements-dev.txt
+pytest test_agent.py -v
+
 # 4. Test the agent locally (requires AWS credentials)
 cd agent && python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt

@@ -24,7 +24,7 @@ env:
 jobs:
   # ============================================================
   # JOB 1: TEST
-  # Runs Rust unit tests. No AWS credentials needed.
+  # Runs Rust unit tests and Python unit tests. No AWS credentials needed.
   # This catches bugs before we waste time building/deploying.
   # ============================================================
   test:
@@ -40,8 +40,21 @@ jobs:
 
       # Run all unit tests across the workspace.
       # --lib means only library tests (no integration tests that need a DB).
-      - name: Run tests
+      - name: Run Rust tests
         run: cargo test --lib --workspace
+
+      # Set up Python for agent tests
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      # Run Python unit tests for agent code
+      - name: Run Python tests
+        working-directory: agent
+        run: |
+          pip install -r requirements-dev.txt
+          pytest test_agent.py -v --tb=short
 
   # ============================================================
   # JOB 2: BUILD

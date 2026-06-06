@@ -11,7 +11,12 @@ use tokio::io::{AsyncBufReadExt, BufReader};
 use uuid::Uuid;
 
 #[derive(Parser)]
-#[command(name = "docint", about = "Document Intelligence agent")]
+#[command(
+    name = "docint",
+    about = "Document Intelligence agent",
+    version,
+    long_about = "Interactive CLI for querying documents using Claude AI with conversational memory"
+)]
 struct Cli {
     /// Agent runtime ARN
     #[arg(long, env("DOCINT_RUNTIME_ARN"))]
@@ -421,5 +426,15 @@ mod tests {
         let xml = "<function_calls>\n<invoke name=\"search-documents\">\n<parameter name=\"query\">test</parameter>\n</invoke>\n</function_calls>";
         let result = format_tool_call(xml);
         assert_eq!(result, Some("search-documents (query=test)".to_string()));
+    }
+
+    #[test]
+    fn test_cli_has_version() {
+        // Verify version info is available (clap reads from Cargo.toml)
+        use clap::CommandFactory;
+        let app = Cli::command();
+        let version = app.get_version().expect("CLI should have version");
+        assert!(!version.is_empty(), "Version should not be empty");
+        assert!(version.contains('.'), "Version should be semver format");
     }
 }

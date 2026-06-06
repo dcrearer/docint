@@ -181,6 +181,15 @@ async fn send_query(
                 }
             }
 
+            // Filter out any XML fragments that leaked through
+            if text.trim().starts_with('<') && (
+                text.contains("function_calls") ||
+                text.contains("invoke") ||
+                text.contains("parameter")
+            ) {
+                continue;
+            }
+
             // Regular text output
             if first_byte {
                 ttfb = t2.elapsed();
@@ -400,5 +409,13 @@ mod tests {
         let line = r#"data: """#;
         let result = extract_sse_text(line);
         assert_eq!(result, Some("".to_string()));
+    }
+
+    #[test]
+    fn test_format_tool_call_with_newlines_between_tags() {
+        // Simulates streaming where tags arrive in separate chunks
+        let xml = "<function_calls>\n<invoke name=\"search-documents\">\n<parameter name=\"query\">test</parameter>\n</invoke>\n</function_calls>";
+        let result = format_tool_call(xml);
+        assert_eq!(result, Some("search-documents (query=test)".to_string()));
     }
 }

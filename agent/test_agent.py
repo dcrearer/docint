@@ -149,3 +149,41 @@ class TestTenantInjectorMCPClient:
         calls = mock_mcp.call_args_list
         assert calls[0][0][1]["tenant_id"] == "tenant-1"
         assert calls[1][0][1]["tenant_id"] == "tenant-2"
+
+
+class TestSystemPrompt:
+    """Test suite for system prompt correctness."""
+
+    def test_system_prompt_includes_compare_documents_workflow(self):
+        """Verify prompt explains compare_documents requires document IDs from metadata."""
+        from agent import SYSTEM_PROMPT
+
+        # Check that the prompt mentions the workflow
+        assert "compare_documents" in SYSTEM_PROMPT
+        assert "document_id_a" in SYSTEM_PROMPT
+        assert "document_id_b" in SYSTEM_PROMPT
+        assert "get_document_metadata FIRST" in SYSTEM_PROMPT or "call get_document_metadata first" in SYSTEM_PROMPT.lower()
+
+    def test_system_prompt_explains_document_ids_are_uuids(self):
+        """Verify prompt explains document IDs are UUIDs, not filenames."""
+        from agent import SYSTEM_PROMPT
+
+        assert "UUID" in SYSTEM_PROMPT
+        assert "NOT filename" in SYSTEM_PROMPT or "not filename" in SYSTEM_PROMPT.lower()
+
+    def test_system_prompt_lists_all_tool_parameters(self):
+        """Verify prompt documents all required tool parameters."""
+        from agent import SYSTEM_PROMPT
+
+        # search_documents parameters
+        assert "search_documents" in SYSTEM_PROMPT
+        assert "query" in SYSTEM_PROMPT
+
+        # get_document_metadata parameters
+        assert "get_document_metadata" in SYSTEM_PROMPT
+        assert "document_id" in SYSTEM_PROMPT
+
+        # compare_documents parameters
+        assert "compare_documents" in SYSTEM_PROMPT
+        assert "document_id_a" in SYSTEM_PROMPT
+        assert "document_id_b" in SYSTEM_PROMPT

@@ -182,10 +182,14 @@ async fn send_query(
             }
 
             // Filter out any XML fragments that leaked through
-            if text.trim().starts_with('<') && (
-                text.contains("function_calls") ||
-                text.contains("invoke") ||
-                text.contains("parameter")
+            let trimmed = text.trim();
+            if trimmed.starts_with('<') && (
+                trimmed.starts_with("<function") ||
+                trimmed.starts_with("<invoke") ||
+                trimmed.starts_with("<parameter") ||
+                trimmed.starts_with("</function") ||
+                trimmed.starts_with("</invoke") ||
+                trimmed.starts_with("</parameter")
             ) {
                 continue;
             }

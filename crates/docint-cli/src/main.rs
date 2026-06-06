@@ -1,5 +1,10 @@
 mod auth;
 
+// Include build-time information (git commit, build date)
+mod built_info {
+    include!(concat!(env!("OUT_DIR"), "/built.rs"));
+}
+
 use anyhow::{Context, Result};
 use aws_sdk_bedrockagentcore::primitives::Blob;
 use clap::Parser;
@@ -10,12 +15,31 @@ use std::time::Instant;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use uuid::Uuid;
 
+/// Returns the long version string with git commit and build date
+fn long_version() -> &'static str {
+    let date = built_info::BUILT_TIME_UTC
+        .split_whitespace()
+        .take(3)
+        .collect::<Vec<_>>()
+        .join(" ");
+    Box::leak(
+        format!(
+            "{} (commit: {}, built: {})",
+            built_info::PKG_VERSION,
+            built_info::GIT_COMMIT_HASH_SHORT.unwrap_or("unknown"),
+            date
+        )
+        .into_boxed_str(),
+    )
+}
+
 #[derive(Parser)]
 #[command(
     name = "docint",
     about = "Document Intelligence agent",
     version,
-    long_about = "Interactive CLI for querying documents using Claude AI with conversational memory"
+    long_version = long_version(),
+    long_about = "Interactive CLI for querying documents using Claude on AWS Bedrock with conversational memory powered by Amazon Bedrock AgentCore"
 )]
 struct Cli {
     /// Agent runtime ARN

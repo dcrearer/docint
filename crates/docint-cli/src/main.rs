@@ -37,8 +37,7 @@ fn long_version() -> &'static str {
 #[command(
     name = "docint",
     about = "Document Intelligence agent",
-    version,
-    long_version = long_version(),
+    version = long_version(),
     long_about = "Interactive CLI for querying documents using Claude on AWS Bedrock with conversational memory powered by Amazon Bedrock AgentCore"
 )]
 struct Cli {
@@ -453,12 +452,22 @@ mod tests {
     }
 
     #[test]
-    fn test_cli_has_version() {
-        // Verify version info is available (clap reads from Cargo.toml)
+    fn test_cli_version_includes_git_info() {
+        // Verify version includes git commit and build date
         use clap::CommandFactory;
         let app = Cli::command();
         let version = app.get_version().expect("CLI should have version");
-        assert!(!version.is_empty(), "Version should not be empty");
+
+        // Should contain semver
         assert!(version.contains('.'), "Version should be semver format");
+
+        // Should contain git commit hash
+        assert!(version.contains("commit:"), "Version should include git commit");
+
+        // Should contain build date
+        assert!(version.contains("built:"), "Version should include build date");
+
+        // Verify it's not just the static version from Cargo.toml
+        assert!(!version.eq("0.1.0"), "Version should be enhanced with git info, not just Cargo.toml version");
     }
 }

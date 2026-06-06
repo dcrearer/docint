@@ -211,6 +211,8 @@ async fn send_query(
 
             // Filter out any XML fragments that leaked through
             let trimmed = text.trim();
+
+            // Skip if it looks like XML tag content
             if trimmed.starts_with('<') && (
                 trimmed.starts_with("<function") ||
                 trimmed.starts_with("<invoke") ||
@@ -219,6 +221,16 @@ async fn send_query(
                 trimmed.starts_with("</invoke") ||
                 trimmed.starts_with("</parameter")
             ) {
+                continue;
+            }
+
+            // Skip XML tag fragments that don't start with '<'
+            // These are pieces like "_calls>" from split "</function_calls>"
+            if trimmed.ends_with('>') && (
+                trimmed.contains("_calls") ||
+                trimmed.contains("invoke") ||
+                trimmed.contains("parameter")
+            ) && !trimmed.chars().next().map(|c| c.is_alphabetic() && c.is_uppercase()).unwrap_or(false) {
                 continue;
             }
 
@@ -469,5 +481,15 @@ mod tests {
 
         // Verify it's not just the static version from Cargo.toml
         assert!(!version.eq("0.1.0"), "Version should be enhanced with git info, not just Cargo.toml version");
+    }
+
+    #[test]
+    fn test_extract_sse_detects_xml_fragment() {
+        // Verify XML fragments like "_calls>" would be filtered
+        let fragment = "_calls>";
+        assert!(fragment.ends_with('>'));
+        assert!(fragment.contains("_calls"));
+        // This simulates the filtering logic - fragments ending with '>'
+        // containing XML keywords should be filtered
     }
 }

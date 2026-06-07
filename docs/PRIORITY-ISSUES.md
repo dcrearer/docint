@@ -2,6 +2,14 @@
 
 **Last Updated:** 2026-06-07
 
+## 🎉 All P0, P1, and P2 Issues Complete!
+
+- ✅ **P0 (Critical):** All 4 issues fixed - RLS isolation, credentials security, IAM scoping
+- ✅ **P1 (High):** All 4 security gaps closed - Token storage, S3 hardening, tenant injection, IAM scoping
+- ✅ **P2 (Medium):** All 7 operational gaps addressed - VPC endpoint, DLQ, monitoring, limits, concurrency, Dockerfile
+
+**Total Issues Resolved:** 15/15 (100%)
+
 ## P0 — Critical (Fix Before Production)
 
 ### ✅ 1. RLS Tenant Isolation Broken Under Connection Pooling — **FIXED**
@@ -172,69 +180,105 @@ resources=[gateway.gateway.attr_gateway_arn]  # Specific gateway only
 
 ---
 
-## P2 — Medium (Operational Gaps)
+## P2 — Medium (Operational Gaps) — **ALL COMPLETE ✅**
 
-### 9. Missing CloudWatch Logs VPC Endpoint
+**Summary: All 7 P2 issues fixed! ✅**
+
+### ✅ 9. Missing CloudWatch Logs VPC Endpoint — **FIXED**
 
 **File:** `infrastructure/stacks/database_stack.py:24-33`
 
 Lambdas in isolated subnets need a VPC endpoint for CloudWatch Logs. Without it, logs may fail silently.
 
-**Fix:** Add `ec2.InterfaceVpcEndpointAwsService.CLOUDWATCH_LOGS` to the VPC endpoints.
+**Status:** ✅ **FIXED** in commit d97f8c7
+- Added `LOGS` interface endpoint to VPC configuration
+- Lambdas can now write logs without NAT gateway
+- Prevents silent log failures in private subnets
 
 ---
 
-### 10. No Dead Letter Queue for Ingest Lambda
+### ✅ 10. No Dead Letter Queue for Ingest Lambda — **FIXED**
 
-**File:** `infrastructure/stacks/lambda_stack.py:63-67`
+**File:** `infrastructure/stacks/lambda_stack.py:110-117`
 
 Failed S3 event ingestions are retried twice then **lost forever**.
 
-**Fix:** Add an SQS DLQ via `configure_async_invoke`.
+**Status:** ✅ **FIXED** in commit d97f8c7
+- Created SQS DLQ with 14-day retention
+- Attached to ingest Lambda via `dead_letter_queue` parameter
+- Failed events captured for investigation
 
 ---
 
-### 11. SNS Alarm Topic Has No Subscriptions
+### ✅ 11. SNS Alarm Topic Has No Subscriptions — **FIXED**
 
-**File:** `infrastructure/stacks/monitoring_stack.py:14`
+**File:** `infrastructure/stacks/monitoring_stack.py:18-21`
 
 Alarms fire into the void — no email, Slack, or PagerDuty integration.
 
+**Status:** ✅ **FIXED** in commit d97f8c7
+- Added email subscription to dcrearer@gmail.com
+- Requires confirmation on first deploy
+- All CloudWatch alarms now notify operations team
+
 ---
 
-### 12. No Aurora Database Alarms
+### ✅ 12. No Aurora Database Alarms — **FIXED**
 
-**File:** `infrastructure/stacks/monitoring_stack.py`
+**File:** `infrastructure/stacks/monitoring_stack.py:58-89`
 
 Monitoring only covers Lambda metrics. Missing alarms for CPU, connections, and ACU utilization.
 
+**Status:** ✅ **FIXED** in commit d97f8c7
+- Added CPU utilization alarm (>80% for 10 minutes)
+- Added database connections alarm (>80 connections)
+- Added ACU utilization alarm (>90% capacity)
+- All alarms integrated with SNS topic
+
 ---
 
-### 13. No `limit` Bounds Checking on Lambda Handlers
+### ✅ 13. No `limit` Bounds Checking on Lambda Handlers — **FIXED**
 
-**Files:** All Lambda handlers
+**Files:** `lambda-search/src/main.rs:65`, `lambda-metadata/src/main.rs:65`, `lambda-compare/src/main.rs:68`
 
 User-provided `limit` is passed directly to SQL. A caller could request `limit: 10000`.
 
-**Fix:** Clamp: `let limit = req.limit.unwrap_or(5).min(50);`
+**Status:** ✅ **FIXED** in commit ad68007 (TDD approach)
+- **Tests added first** (commit c21761a): 9 tests across 3 handlers
+- **Implementation:** Added `.clamp()` to all handlers:
+  - Search: clamps to 1-50
+  - Metadata: clamps to 1-100
+  - Compare: clamps to 1-20
+- Prevents DoS via excessive result sets
+- All tests passing
 
 ---
 
-### 14. Sequential Chunk Embedding in Ingestion
+### ✅ 14. Sequential Chunk Embedding in Ingestion — **FIXED**
 
-**File:** `crates/lambda-ingest/src/main.rs:100-104`
+**File:** `crates/lambda-ingest/src/main.rs:114-130`
 
 Each chunk is embedded and inserted one at a time. For 50 chunks, that's 50 serial Bedrock API calls.
 
-**Fix:** Use `futures::stream::buffered(5)` for concurrent embedding.
+**Status:** ✅ **FIXED** in commit ad68007 (TDD approach)
+- **Tests added first** (commit c21761a): 3 concurrent embedding tests
+- **Implementation:** Replaced sequential loop with `futures::stream::buffered(5)`
+- Expected ~5× performance improvement (10s → 2s for 50 chunks)
+- Preserves chunk order
+- All tests passing
 
 ---
 
-### 15. `Dockerfile.lambda` Missing `lambda-ingest`
+### ✅ 15. `Dockerfile.lambda` Missing `lambda-ingest` — **FIXED**
 
-**File:** `Dockerfile.lambda:5`
+**File:** `Dockerfile.lambda:6`
 
 Only builds 3 of 4 Lambdas. The CI pipeline uses `--workspace` (correct), but the Dockerfile is inconsistent.
+
+**Status:** ✅ **FIXED** in commit d97f8c7
+- Added `-p lambda-ingest` to cargo lambda build command
+- Dockerfile now consistent with CI workflow
+- All 4 Lambda functions built
 
 ---
 

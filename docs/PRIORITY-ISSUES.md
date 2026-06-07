@@ -66,7 +66,7 @@ All 4 critical security issues have been resolved and deployed to production. RL
 
 ## P1 — High (Security Gaps)
 
-**Summary: 2 of 5 P1 issues fixed (✅ #5, #6 complete)**
+**Summary: 3 of 5 P1 issues fixed (✅ #5, #6, #7 complete)**
 
 ### ✅ 5. No Input Validation on `tenant_id` — **FIXED (Better Solution)**
 
@@ -109,13 +109,20 @@ Instead of validating tenant_id (which assumes the LLM should control it), we im
 
 ---
 
-### 7. S3 Bucket Missing Hardening
+### ✅ 7. S3 Bucket Missing Hardening — **FIXED**
 
-**File:** `infrastructure/stacks/lambda_stack.py:68-71`
+**File:** `infrastructure/stacks/lambda_stack.py:120-143`
 
 Missing `enforce_ssl`, explicit `block_public_access`, and lifecycle rules. Storage grows unbounded.
 
-**Fix:** Add `block_public_access=s3.BlockPublicAccess.BLOCK_ALL`, `enforce_ssl=True`, and a lifecycle rule.
+**Status:** ✅ **FIXED** in commit e073828
+- Added `block_public_access=s3.BlockPublicAccess.BLOCK_ALL` (prevents accidental public exposure)
+- Added `enforce_ssl=True` (requires HTTPS connections)
+- Added lifecycle rule: transition to Infrequent Access after 30 days
+- Added lifecycle rule: delete documents after 90 days
+- **No versioning** (docint is RAG system, not version control - avoids non-current version accumulation)
+
+**Impact on users:** None - AWS CLI uploads and Lambda ingestion work exactly the same (both use authenticated IAM access, not public access)
 
 ---
 

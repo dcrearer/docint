@@ -62,7 +62,7 @@ async fn handler(event: LambdaEvent<Request>) -> Result<Response, Error> {
     let store = get_store().await;
     let tenant_id = req.tenant_id.clone();
     let document_id = req.document_id;
-    let limit = req.limit.unwrap_or(20);
+    let limit = req.limit.unwrap_or(20).clamp(1, 100);
 
     let documents = db::with_tenant(store.pool(), &req.tenant_id, move |tx| {
         Box::pin(async move {

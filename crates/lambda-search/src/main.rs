@@ -62,7 +62,7 @@ async fn handler(event: LambdaEvent<Request>) -> Result<Response, Error> {
     let state = get_state().await;
 
     let embedding = state.embedder.embed(&req.query).await?;
-    let limit = req.limit.unwrap_or(5);
+    let limit = req.limit.unwrap_or(5).clamp(1, 50);
     let query = req.query.clone();
     let tenant_id = req.tenant_id.clone();
 

@@ -111,12 +111,22 @@ async fn ingest_file(
     // Copy chunks to owned strings so they can be moved into the transaction closure
     let chunks: Vec<String> = chunks_borrowed.iter().map(|s| s.to_string()).collect();
 
-    // Generate all embeddings before transaction (Bedrock API calls)
-    let mut embeddings = Vec::with_capacity(chunks.len());
-    for chunk in &chunks {
-        let emb = state.embedder.embed(chunk).await?;
-        embeddings.push(emb);
-    }
+    // Generate all embeddings concurrently before transaction (Bedrock API calls)
+    use futures::stream::{self, StreamExt};
+
+    let embedding_futures = chunks
+        .iter()
+        .map(|chunk| state.embedder.embed(chunk))
+        .collect::<Vec<_>>();
+
+    let embeddings: Result<Vec<Vec<f32>>, _> = stream::iter(embedding_futures)
+        .buffered(5) // Process 5 concurrent embedding requests at a time
+        .collect::<Vec<_>>()
+        .await
+        .into_iter()
+        .collect();
+
+    let embeddings = embeddings?;
 
     // Now do all DB writes in one transaction
     use docint_core::db;

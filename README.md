@@ -101,7 +101,15 @@ aws s3 cp my-notes.md s3://docint-docs-<ACCOUNT_ID>/a1b2c3d4-e5f6-7890-abcd-ef12
 
 # Sync an entire directory (only .md files)
 aws s3 sync ./my-docs/ s3://docint-docs-<ACCOUNT_ID>/a1b2c3d4-e5f6-7890-abcd-ef1234567890/ --exclude "*" --include "*.md"
+
+# TIP: Use --dryrun to preview what would be uploaded before syncing
+aws s3 sync ./my-docs/ s3://docint-docs-<ACCOUNT_ID>/a1b2c3d4-.../ --exclude "*" --include "*.md" --dryrun
 ```
+
+**Useful sync options:**
+- `--dryrun` - Preview changes without uploading (recommended for large syncs)
+- `--delete` - Remove files in S3 that don't exist locally (use with caution)
+- `--exclude "*" --include "*.md"` - Filter by file extension
 
 Supported formats: `.txt` `.md` `.csv` `.json` `.html` `.xml` `.yaml` `.yml` `.log` `.rst`
 

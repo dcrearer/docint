@@ -23,7 +23,9 @@ MODEL_ID = os.environ.get("MODEL_ID", "us.anthropic.claude-haiku-4-5-20251001-v1
 AWS_REGION = os.environ.get("AWS_REGION", "us-east-1")
 MEMORY_ID = os.environ.get("MEMORY_ID", "")
 
+logger.info(f"Initializing BedrockModel: model_id={MODEL_ID}, region={AWS_REGION}")
 model = BedrockModel(model_id=MODEL_ID)
+logger.info("BedrockModel initialized successfully")
 
 logger.info(f"MEMORY_ID={'SET: ' + MEMORY_ID if MEMORY_ID else 'NOT SET'}")
 
@@ -151,10 +153,14 @@ async def invoke(payload):
         )
 
         try:
+            logger.info(f"Starting agent stream for query: {query[:100]}...")
+            event_count = 0
             # No longer need to prefix query with tenant_id since it's injected
             async for event in agent.stream_async(query):
+                event_count += 1
                 if isinstance(event, dict) and "data" in event:
                     yield event["data"]
+            logger.info(f"Agent stream completed: {event_count} events yielded")
         finally:
             if session_manager:
                 try:

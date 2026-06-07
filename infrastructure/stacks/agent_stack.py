@@ -26,10 +26,11 @@ class AgentStack(Stack):
         )
 
         # Bedrock model invocation - scoped to specific model (Haiku 4.5)
+        # Note: Foundation models require wildcard region for cross-region inference
         role.add_to_policy(iam.PolicyStatement(
             actions=["bedrock:InvokeModel", "bedrock:InvokeModelWithResponseStream"],
             resources=[
-                f"arn:aws:bedrock:{self.region}::foundation-model/us.anthropic.claude-haiku-4-5-20251001-v1:0",
+                "arn:aws:bedrock:*::foundation-model/us.anthropic.claude-haiku-4-5-20251001-v1:0",
                 f"arn:aws:bedrock:{self.region}:{self.account}:inference-profile/*",
             ],
         ))

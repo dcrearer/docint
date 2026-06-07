@@ -134,10 +134,11 @@ Missing `enforce_ssl`, explicit `block_public_access`, and lifecycle rules. Stor
 
 Grants `foundation-model/*` (any model, including expensive ones) and `bedrock-agentcore:Invoke*` on `*` (any gateway).
 
-**Status:** ✅ **FIXED** in commit 8def3b3
-- **Bedrock permissions:** Scoped from `arn:aws:bedrock:*::foundation-model/*` to specific Claude Haiku 4.5 model
+**Status:** ✅ **FIXED** in commits 8def3b3, [current]
+- **Bedrock permissions:** Scoped from `arn:aws:bedrock:*::foundation-model/*` to specific Claude Haiku 4.5 model (with wildcard region for cross-region inference)
 - **Gateway permissions:** Scoped from `resources=["*"]` to specific gateway ARN via CloudFormation cross-stack reference
 - **Verification:** CDK synthesis validates IAM policy structure (tested locally before deployment)
+- **Note:** Foundation model ARN requires `arn:aws:bedrock:*::` (wildcard region) per AWS documentation - Bedrock cross-region inference is the standard pattern
 
 **Before:**
 ```python
@@ -150,7 +151,7 @@ resources=["*"]  # Any gateway
 **After:**
 ```python
 resources=[
-    f"arn:aws:bedrock:{self.region}::foundation-model/us.anthropic.claude-haiku-4-5-20251001-v1:0",
+    "arn:aws:bedrock:*::foundation-model/us.anthropic.claude-haiku-4-5-20251001-v1:0",  # Specific model, wildcard region
 ]
 resources=[gateway.gateway.attr_gateway_arn]  # Specific gateway only
 ```

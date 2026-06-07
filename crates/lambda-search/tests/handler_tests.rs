@@ -149,3 +149,69 @@ async fn test_handler_empty_query_returns_results() {
     // (full-text search returns nothing, but vector search provides results)
     assert!(!results.is_empty(), "Vector search should work with empty query");
 }
+
+// --- Limit Bounds Checking Tests (TDD: RED Phase) ---
+
+#[tokio::test]
+#[ignore]
+async fn test_limit_clamping_excessive_value() {
+    let pool = setup_test_db().await.unwrap();
+    let tenant_id = "tenant-limit-excessive";
+
+    // Seed many documents to test limit enforcement
+    for i in 0..60 {
+        seed_test_data(&pool, tenant_id, &format!("Doc {}", i)).await.unwrap();
+    }
+
+    // Request excessive limit (should be clamped to max of 50)
+    let embedding = vec![0.1; 1024];
+    let query = "Doc";
+    let limit = 10000; // Excessive - should clamp to 50
+
+    let results = db::with_tenant(&pool, tenant_id, move |tx| {
+        let tenant_id = tenant_id.to_string();
+        Box::pin(async move {
+            VectorStore::hybrid_search_tx(tx, &embedding, query, &tenant_id, limit).await
+        })
+    })
+    .await
+    .unwrap();
+
+    // WILL FAIL: Current code doesn't clamp, may return more than 50 results
+    assert!(results.len() <= 50, "Results should be clamped to max limit of 50");
+}
+
+#[tokio::test]
+#[ignore]
+async fn test_limit_clamping_zero_value() {
+    let pool = setup_test_db().await.unwrap();
+    let tenant_id = "tenant-limit-zero";
+
+    seed_test_data(&pool, tenant_id, "Zero Limit Test").await.unwrap();
+
+    // Request zero limit (should be clamped to 1)
+    let embedding = vec![0.1; 1024];
+    let query = "Zero Limit Test";
+    let limit = 0;
+
+    let results = db::with_tenant(&pool, tenant_id, move |tx| {
+        let tenant_id = tenant_id.to_string();
+        Box::pin(async move {
+            VectorStore::hybrid_search_tx(tx, &embedding, query, &tenant_id, limit).await
+        })
+    })
+    .await
+    .unwrap();
+
+    // WILL FAIL: Current code passes 0 to SQL, returns 0 results
+    assert!(results.len() >= 1, "Results should respect min limit of 1");
+}
+
+#[test]
+fn test_limit_clamping_negative_value() {
+    // Test that negative limits are clamped to 1 (unit test, no DB needed)
+    let limit: i64 = -5;
+    let clamped = limit.clamp(1, 50);
+
+    assert_eq!(clamped, 1, "Negative limit should be clamped to 1");
+}

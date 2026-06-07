@@ -1959,6 +1959,7 @@ dependencies = [
  "aws-config",
  "aws-sdk-s3",
  "docint-core",
+ "futures",
  "lambda_runtime",
  "serde",
  "serde_json",

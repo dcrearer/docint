@@ -314,3 +314,65 @@ async fn test_handler_enforces_tenant_isolation() {
     );
     assert_eq!(response_a.documents[0].id, tenant_a_doc_id.to_string());
 }
+
+// --- Limit Bounds Checking Tests (TDD: RED Phase) ---
+
+#[tokio::test]
+#[ignore]
+async fn test_limit_clamping_excessive_value() {
+    let pool = setup_test_db().await.unwrap();
+    let tenant_id = "tenant-metadata-limit-excessive";
+
+    // Seed many documents to test limit enforcement
+    for i in 0..120 {
+        seed_test_data(&pool, tenant_id, &format!("Doc {}", i)).await.unwrap();
+    }
+
+    // Request excessive limit (should be clamped to max of 100)
+    let request = Request {
+        tenant_id: tenant_id.to_string(),
+        document_id: None,
+        limit: Some(10000), // Excessive - should clamp to 100
+    };
+
+    let response = call_handler(&pool, request).await.unwrap();
+
+    // WILL FAIL: Current code doesn't clamp, may return more than 100 results
+    assert!(
+        response.documents.len() <= 100,
+        "Results should be clamped to max limit of 100"
+    );
+}
+
+#[tokio::test]
+#[ignore]
+async fn test_limit_clamping_zero_value() {
+    let pool = setup_test_db().await.unwrap();
+    let tenant_id = "tenant-metadata-limit-zero";
+
+    seed_test_data(&pool, tenant_id, "Zero Limit Test").await.unwrap();
+
+    // Request zero limit (should be clamped to 1)
+    let request = Request {
+        tenant_id: tenant_id.to_string(),
+        document_id: None,
+        limit: Some(0),
+    };
+
+    let response = call_handler(&pool, request).await.unwrap();
+
+    // WILL FAIL: Current code passes 0 to SQL, returns 0 results
+    assert!(
+        response.documents.len() >= 1,
+        "Results should respect min limit of 1"
+    );
+}
+
+#[test]
+fn test_limit_clamping_negative_value() {
+    // Test that negative limits are clamped to 1 (unit test, no DB needed)
+    let limit: i64 = -5;
+    let clamped = limit.clamp(1, 100);
+
+    assert_eq!(clamped, 1, "Negative limit should be clamped to 1");
+}

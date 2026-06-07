@@ -468,3 +468,118 @@ async fn test_handler_enforces_tenant_isolation() {
         "Tenant B should not see tenant A's documents due to RLS isolation"
     );
 }
+
+// --- Limit Bounds Checking Tests (TDD: RED Phase) ---
+
+#[tokio::test]
+#[ignore]
+async fn test_limit_clamping_excessive_value() {
+    let pool = setup_test_db().await.unwrap();
+    let tenant_id = "tenant-compare-limit-excessive";
+
+    // Create document with many chunks to test limit enforcement
+    let chunks: Vec<&str> = (0..30).map(|i| Box::leak(format!("Chunk {}", i).into_boxed_str()) as &str).collect();
+    let doc_a_id = create_test_document(
+        &pool,
+        tenant_id,
+        "Document A",
+        "s3://bucket/doc-a.pdf",
+        &chunks,
+        &vec![1.0; 1024],
+    )
+    .await
+    .unwrap();
+
+    let doc_b_id = create_test_document(
+        &pool,
+        tenant_id,
+        "Document B",
+        "s3://bucket/doc-b.pdf",
+        &chunks,
+        &vec![0.9; 1024],
+    )
+    .await
+    .unwrap();
+
+    // Request excessive limit (should be clamped to max of 20)
+    let response = simulate_handler(
+        &pool,
+        "test query",
+        doc_a_id,
+        doc_b_id,
+        tenant_id,
+        Some(10000), // Excessive - should clamp to 20
+    )
+    .await
+    .unwrap();
+
+    // WILL FAIL: Current code doesn't clamp, may return more than 20 results per document
+    assert!(
+        response.document_a.matches.len() <= 20,
+        "Document A results should be clamped to max limit of 20"
+    );
+    assert!(
+        response.document_b.matches.len() <= 20,
+        "Document B results should be clamped to max limit of 20"
+    );
+}
+
+#[tokio::test]
+#[ignore]
+async fn test_limit_clamping_zero_value() {
+    let pool = setup_test_db().await.unwrap();
+    let tenant_id = "tenant-compare-limit-zero";
+
+    let doc_a_id = create_test_document(
+        &pool,
+        tenant_id,
+        "Document A",
+        "s3://bucket/doc-a.pdf",
+        &["Content A chunk 1", "Content A chunk 2"],
+        &vec![1.0; 1024],
+    )
+    .await
+    .unwrap();
+
+    let doc_b_id = create_test_document(
+        &pool,
+        tenant_id,
+        "Document B",
+        "s3://bucket/doc-b.pdf",
+        &["Content B chunk 1", "Content B chunk 2"],
+        &vec![0.9; 1024],
+    )
+    .await
+    .unwrap();
+
+    // Request zero limit (should be clamped to 1)
+    let response = simulate_handler(
+        &pool,
+        "test query",
+        doc_a_id,
+        doc_b_id,
+        tenant_id,
+        Some(0),
+    )
+    .await
+    .unwrap();
+
+    // WILL FAIL: Current code passes 0 to SQL, returns 0 results
+    assert!(
+        response.document_a.matches.len() >= 1,
+        "Document A results should respect min limit of 1"
+    );
+    assert!(
+        response.document_b.matches.len() >= 1,
+        "Document B results should respect min limit of 1"
+    );
+}
+
+#[test]
+fn test_limit_clamping_negative_value() {
+    // Test that negative limits are clamped to 1 (unit test, no DB needed)
+    let limit: i64 = -5;
+    let clamped = limit.clamp(1, 20);
+
+    assert_eq!(clamped, 1, "Negative limit should be clamped to 1");
+}

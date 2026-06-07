@@ -24,6 +24,24 @@ fn cache_path() -> Result<PathBuf> {
     Ok(dir.join("tokens.json"))
 }
 
+fn save_cache(cache: &TokenCache) -> Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+    let path = cache_path()?;
+    let data = serde_json::to_string(cache)?;
+    std::fs::write(&path, data)?;
+    // Set permissions to 0600 (owner read/write only)
+    let mut perms = std::fs::metadata(&path)?.permissions();
+    perms.set_mode(0o600);
+    std::fs::set_permissions(&path, perms)?;
+    Ok(())
+}
+
+fn load_cache() -> Result<TokenCache> {
+    let path = cache_path()?;
+    let data = std::fs::read_to_string(&path)?;
+    Ok(serde_json::from_str(&data)?)
+}
+
 fn decode_jwt_payload(token: &str) -> Result<serde_json::Value> {
     let payload = token.split('.').nth(1).context("Invalid JWT")?;
     let bytes = base64::engine::general_purpose::URL_SAFE_NO_PAD.decode(payload)?;
@@ -71,14 +89,12 @@ async fn refresh_tokens(client: &Client, cache: &mut TokenCache) -> Result<Strin
     let result = resp.authentication_result().context("No auth result")?;
     let id_token = result.id_token().context("No id_token")?.to_string();
     cache.id_token = id_token.clone();
-    std::fs::write(cache_path()?, serde_json::to_string(cache)?)?;
+    save_cache(cache)?;
     Ok(id_token)
 }
 
 pub async fn try_restore_session(client: &Client, client_id: &str) -> Option<Session> {
-    let path = cache_path().ok()?;
-    let data = std::fs::read_to_string(&path).ok()?;
-    let mut cache: TokenCache = serde_json::from_str(&data).ok()?;
+    let mut cache = load_cache().ok()?;
 
     if cache.client_id != client_id {
         return None;
@@ -118,7 +134,8 @@ async fn authenticate(
         refresh_token: refresh_token.to_string(),
         client_id: client_id.to_string(),
     };
-    std::fs::write(cache_path()?, serde_json::to_string(&cache)?)?;
+
+    save_cache(&cache)?;
 
     session_from_token(id_token)
 }

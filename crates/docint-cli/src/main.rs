@@ -79,8 +79,36 @@ fn format_tool_call(xml: &str) -> Option<String> {
     while let Some(invoke_start) = xml[search_pos..].find(r#"<invoke name=""#) {
         let abs_invoke_start = search_pos + invoke_start;
         let name_start = abs_invoke_start + r#"<invoke name=""#.len();
+
+        // Find the closing quote for the tool name
         let name_end = xml[name_start..].find('"')?;
         let tool_name = &xml[name_start..name_start + name_end];
+
+        // Check if tool name is valid
+        let is_valid_name = tool_name.chars().all(|c| c.is_alphanumeric() || c == '_' || c == '-');
+
+        if !is_valid_name {
+            // Malformed XML - try lenient extraction
+            // Extract tool name up to first invalid character
+            let clean_name: String = xml[name_start..]
+                .chars()
+                .take_while(|c| c.is_alphanumeric() || *c == '_' || *c == '-')
+                .collect();
+
+            if !clean_name.is_empty() {
+                tool_calls.push(format!("{} [malformed XML]", clean_name));
+            } else {
+                tool_calls.push("[tool call - XML parse error]".to_string());
+            }
+
+            // Try to continue to next invoke
+            if let Some(next_invoke) = xml[abs_invoke_start + 1..].find(r#"<invoke name=""#) {
+                search_pos = abs_invoke_start + 1 + next_invoke;
+            } else {
+                break;
+            }
+            continue;
+        }
 
         // Find the end of this invoke block
         let invoke_end = xml[abs_invoke_start..].find("</invoke>")?;
@@ -184,14 +212,24 @@ async fn send_query(
                     // Extract just the tool call XML
                     let tool_xml = &tool_call_buffer[..end_pos + 17]; // 17 = len("</function_calls>")
 
-                    // Parse and display in friendly format
-                    if let Some(formatted) = format_tool_call(tool_xml) {
-                        if first_byte {
-                            ttfb = t2.elapsed();
-                            first_byte = false;
+                    // Parse and display in friendly format (silently skip if malformed)
+                    match format_tool_call(tool_xml) {
+                        Some(formatted) => {
+                            if first_byte {
+                                ttfb = t2.elapsed();
+                                first_byte = false;
+                            }
+                            write!(stdout, "\n🔧 {formatted}\n")?;
+                            stdout.flush()?;
                         }
-                        write!(stdout, "\n🔧 {formatted}\n")?;
-                        stdout.flush()?;
+                        None => {
+                            // Malformed XML - tool call happened but we can't parse it for display
+                            // This is fine - the agent still executes the tool correctly
+                            if first_byte {
+                                ttfb = t2.elapsed();
+                                first_byte = false;
+                            }
+                        }
                     }
 
                     // Continue with any text after the tool call
@@ -212,34 +250,46 @@ async fn send_query(
             // Filter out any XML or JSON artifacts that leaked through
             let trimmed = text.trim();
 
-            // Skip if it looks like XML tag content
+            // Skip if empty or only whitespace
+            if trimmed.is_empty() {
+                continue;
+            }
+
+            // Skip complete XML tags
             if trimmed.starts_with('<') && (
                 trimmed.starts_with("<function") ||
                 trimmed.starts_with("<invoke") ||
                 trimmed.starts_with("<parameter") ||
+                trimmed.starts_with("<") ||
                 trimmed.starts_with("</function") ||
                 trimmed.starts_with("</invoke") ||
-                trimmed.starts_with("</parameter")
+                trimmed.starts_with("</parameter") ||
+                trimmed.starts_with("</")
             ) {
                 continue;
             }
 
-            // Skip XML tag fragments that don't start with '<'
-            // These are pieces like "_calls>" from split "</function_calls>"
-            if trimmed.ends_with('>') && (
-                trimmed.contains("_calls") ||
-                trimmed.contains("invoke") ||
-                trimmed.contains("parameter")
-            ) && !trimmed.chars().next().map(|c| c.is_alphabetic() && c.is_uppercase()).unwrap_or(false) {
+            // Skip XML fragments (endings without '<')
+            // Examples: "_calls>", "invoke>", "parameter>", "function_calls>"
+            if trimmed.ends_with('>') && !trimmed.starts_with('<') {
                 continue;
             }
 
-            // Skip raw JSON tool call responses (MCP protocol artifacts)
+            // Skip MCP JSON protocol artifacts
+            // Example: [_documents", "arguments": {"query": ...
             if (trimmed.starts_with('[') || trimmed.starts_with('{')) && (
                 trimmed.contains(r#""name":"#) ||
                 trimmed.contains(r#""parameters":"#) ||
+                trimmed.contains(r#""arguments":"#) ||
                 trimmed.contains(r#""tool"#)
             ) {
+                continue;
+            }
+
+            // Skip malformed JSON fragments (no opening bracket)
+            // Example: _documents", "arguments": {
+            if (trimmed.contains(r#"", "#) || trimmed.contains(r#"": "#)) &&
+               (trimmed.contains("arguments") || trimmed.contains("parameters")) {
                 continue;
             }
 
@@ -512,5 +562,24 @@ mod tests {
         let json2 = r#"{"tool": "search", "parameters": {"query": "test"}}"#;
         assert!(json2.starts_with('{'));
         assert!(json2.contains(r#""parameters":"#));
+    }
+
+    #[test]
+    fn test_format_tool_call_with_xml_prefix_noise() {
+        // Reproduce the actual bug: XML buffer contains text before <invoke>
+        let xml = r#"</parameter>
+<parameter name="query">lifetime elision</parameter>
+<invoke name="search_documents"><parameter name="query">test</parameter><parameter name="limit">5</parameter></invoke></function_calls>"#;
+        let result = format_tool_call(xml);
+        // Should extract only the invoke block, ignoring preceding XML
+        assert_eq!(result, Some("search_documents (query=test, limit=5)".to_string()));
+    }
+
+    #[test]
+    fn test_format_tool_call_handles_incomplete_preceding_xml() {
+        // Simulate streaming where buffer has fragments before <function_calls>
+        let xml = r#"<function_calls><invoke name="search_documents"><parameter name="query">test</parameter></invoke></function_calls>"#;
+        let result = format_tool_call(xml);
+        assert_eq!(result, Some("search_documents (query=test)".to_string()));
     }
 }

@@ -121,6 +121,25 @@ class LambdaStack(Stack):
             self, "DocsBucket",
             bucket_name=f"docint-docs-{self.account}",
             encryption=s3.BucketEncryption.S3_MANAGED,
+            block_public_access=s3.BlockPublicAccess.BLOCK_ALL,
+            enforce_ssl=True,
+            lifecycle_rules=[
+                s3.LifecycleRule(
+                    id="DeleteOldDocuments",
+                    enabled=True,
+                    expiration=Duration.days(90),
+                ),
+                s3.LifecycleRule(
+                    id="TransitionToIA",
+                    enabled=True,
+                    transitions=[
+                        s3.Transition(
+                            storage_class=s3.StorageClass.INFREQUENT_ACCESS,
+                            transition_after=Duration.days(30),
+                        )
+                    ],
+                ),
+            ],
         )
         # Only ingest Lambda needs S3 access
         self.docs_bucket.grant_read(ingest_role)

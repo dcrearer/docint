@@ -1,5 +1,5 @@
 {
-  "bucket": "docint-docs-404235888080",
+  "bucket": "docint-docs-<ACCOUNT_ID>",
   "key": "f438e448-90f1-7014-9137-307e65766e46/docs/rust-guide.txt",
   "tenant_id": "f438e448-90f1-7014-9137-307e65766e46",
   "title": "Rust Programming Guide"

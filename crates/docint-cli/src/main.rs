@@ -352,19 +352,20 @@ async fn main() -> Result<()> {
             s
         }
         None => {
-            let choices = &["Login", "Sign up", "Quit"];
+            let choices = &["Login", "Quit"];
             let selection = dialoguer::Select::new()
                 .items(choices)
                 .default(0)
                 .interact()?;
 
-            let s = match selection {
-                0 => auth::login(&cognito_client, &cli.client_id).await?,
-                1 => auth::signup(&cognito_client, &cli.client_id).await?,
+            match selection {
+                0 => {
+                    let s = auth::login(&cognito_client, &cli.client_id).await?;
+                    eprintln!("✓ Logged in as {} (tenant: {})\n", s.username, s.tenant_id);
+                    s
+                }
                 _ => return Ok(()),
-            };
-            eprintln!("✓ Logged in as {} (tenant: {})\n", s.username, s.tenant_id);
-            s
+            }
         }
     };
 

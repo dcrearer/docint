@@ -11,23 +11,12 @@ class AuthStack(Stack):
     def __init__(self, scope: Construct, id: str, **kwargs):
         super().__init__(scope, id, **kwargs)
 
-        # Pre-sign-up trigger: auto-confirm users (no email verification)
-        auto_confirm_fn = _lambda.Function(
-            self, "AutoConfirmFn",
-            function_name="docint-auto-confirm",
-            runtime=_lambda.Runtime.PYTHON_3_13,
-            handler="index.handler",
-            code=_lambda.Code.from_inline(
-                "def handler(event, context):\n"
-                "    event['response']['autoConfirmUser'] = True\n"
-                "    return event\n"
-            ),
-        )
-
+        # Self sign-up disabled to prevent unauthorized access and cost abuse.
+        # New users must be created by administrators via AWS Console or AdminCreateUser API.
         self.user_pool = cognito.UserPool(
             self, "UserPool",
             user_pool_name="docint-users",
-            self_sign_up_enabled=True,
+            self_sign_up_enabled=False,
             sign_in_aliases=cognito.SignInAliases(username=True),
             password_policy=cognito.PasswordPolicy(
                 min_length=8,
@@ -35,9 +24,6 @@ class AuthStack(Stack):
                 require_digits=True,
                 require_uppercase=False,
                 require_symbols=False,
-            ),
-            lambda_triggers=cognito.UserPoolTriggers(
-                pre_sign_up=auto_confirm_fn,
             ),
         )
 

@@ -1,4 +1,4 @@
-use anyhow::{Context, Result, bail};
+use anyhow::{Context, Result};
 use aws_sdk_cognitoidentityprovider::Client;
 use base64::Engine;
 use serde::{Deserialize, Serialize};
@@ -147,31 +147,6 @@ pub async fn login(client: &Client, client_id: &str) -> Result<Session> {
 
     let password = rpassword::prompt_password("Password: ")?;
 
-    authenticate(client, client_id, &username, &password).await
-}
-
-pub async fn signup(client: &Client, client_id: &str) -> Result<Session> {
-    let username = dialoguer::Input::<String>::new()
-        .with_prompt("Username")
-        .interact_text()?;
-
-    let password = rpassword::prompt_password("Password: ")?;
-    let confirm = rpassword::prompt_password("Confirm password: ")?;
-
-    if password != confirm {
-        bail!("Passwords do not match");
-    }
-
-    client
-        .sign_up()
-        .client_id(client_id)
-        .username(&username)
-        .password(&password)
-        .send()
-        .await
-        .context("Sign up failed")?;
-
-    eprintln!("✓ Account created. Logging you in...");
     authenticate(client, client_id, &username, &password).await
 }
 

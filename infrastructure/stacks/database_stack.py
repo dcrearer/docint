@@ -30,7 +30,7 @@ class DatabaseStack(Stack):
             ("Bedrock", ec2.InterfaceVpcEndpointAwsService.BEDROCK_RUNTIME),
             ("SecretsManager", ec2.InterfaceVpcEndpointAwsService.SECRETS_MANAGER),
             ("STS", ec2.InterfaceVpcEndpointAwsService.STS),
-            ("Logs", ec2.InterfaceVpcEndpointAwsService.LOGS),
+            ("CloudWatchLogs", ec2.InterfaceVpcEndpointAwsService.CLOUDWATCH_LOGS),
         ]:
             self.vpc.add_interface_endpoint(
                 f"{svc_name}Endpoint",

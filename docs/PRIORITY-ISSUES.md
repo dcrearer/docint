@@ -64,7 +64,11 @@ All four Lambdas share one IAM role. The ingest Lambda needs `s3:GetObject` but 
 
 **P0 (Critical):** All 4 issues resolved and deployed to production. RLS tenant isolation verified with comprehensive integration tests.
 
-**P1 (High):** All 4 security gaps closed. Token storage secured, S3 hardened, tenant_id injection implemented, and IAM permissions scoped to least privilege.
+**P1 (High):** All 4 security gaps closed and verified in production:
+- ✅ Token storage secured with 0600 permissions
+- ✅ S3 hardened with block_public_access, enforce_ssl, lifecycle rules
+- ✅ Tenant_id injection implemented (removed from LLM-visible schema)
+- ✅ IAM permissions scoped to specific model and gateway (verified working in production)
 
 ## P1 — High (Security Gaps)
 
@@ -134,11 +138,18 @@ Missing `enforce_ssl`, explicit `block_public_access`, and lifecycle rules. Stor
 
 Grants `foundation-model/*` (any model, including expensive ones) and `bedrock-agentcore:Invoke*` on `*` (any gateway).
 
-**Status:** ✅ **FIXED** in commits 8def3b3, [current]
-- **Bedrock permissions:** Scoped from `arn:aws:bedrock:*::foundation-model/*` to specific Claude Haiku 4.5 model (with wildcard region for cross-region inference)
+**Status:** ✅ **FIXED** in commits 8def3b3, 147c7dd, 896a097
+- **Bedrock permissions:** Scoped from `arn:aws:bedrock:*::foundation-model/*` to specific Claude Haiku 4.5 model
 - **Gateway permissions:** Scoped from `resources=["*"]` to specific gateway ARN via CloudFormation cross-stack reference
-- **Verification:** CDK synthesis validates IAM policy structure (tested locally before deployment)
-- **Note:** Foundation model ARN requires `arn:aws:bedrock:*::` (wildcard region) per AWS documentation - Bedrock cross-region inference is the standard pattern
+- **Model ID formats:** Allows both in-region (`anthropic.claude-haiku...`) and geo inference (`us.anthropic.claude-haiku...`) formats per AWS documentation
+- **Agent logging:** Added instrumentation at Bedrock invocation boundary to detect IAM/API failures
+- **Verification:** Tested in production, agent successfully invoking Bedrock with scoped IAM permissions
+
+**Root Cause Analysis:**
+Initial IAM scoping (commit 8def3b3) was too restrictive:
+1. Used `arn:aws:bedrock:us-east-1::` (region-locked) → Changed to `arn:aws:bedrock:*::` for cross-region inference
+2. Only allowed geo format `us.anthropic.claude-haiku...` → Strands BedrockModel strips `us.` prefix when calling API
+3. Missing logging at Bedrock boundary → Added instrumentation to surface IAM errors in CloudWatch
 
 **Before:**
 ```python
@@ -151,10 +162,13 @@ resources=["*"]  # Any gateway
 **After:**
 ```python
 resources=[
-    "arn:aws:bedrock:*::foundation-model/us.anthropic.claude-haiku-4-5-20251001-v1:0",  # Specific model, wildcard region
+    "arn:aws:bedrock:*::foundation-model/us.anthropic.claude-haiku-4-5-20251001-v1:0",      # Geo inference format
+    "arn:aws:bedrock:*::foundation-model/anthropic.claude-haiku-4-5-20251001-v1:0",         # In-region format
 ]
 resources=[gateway.gateway.attr_gateway_arn]  # Specific gateway only
 ```
+
+**AWS Documentation Reference:** https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-haiku-4-5.html
 
 ---
 

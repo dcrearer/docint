@@ -25,19 +25,19 @@ class AgentStack(Stack):
             ),
         )
 
-        # Bedrock model invocation
+        # Bedrock model invocation - scoped to specific model (Haiku 4.5)
         role.add_to_policy(iam.PolicyStatement(
             actions=["bedrock:InvokeModel", "bedrock:InvokeModelWithResponseStream"],
             resources=[
-                "arn:aws:bedrock:*::foundation-model/*",
+                f"arn:aws:bedrock:{self.region}::foundation-model/us.anthropic.claude-haiku-4-5-20251001-v1:0",
                 f"arn:aws:bedrock:{self.region}:{self.account}:inference-profile/*",
             ],
         ))
 
-        # Gateway access
+        # Gateway access - scoped to specific gateway
         role.add_to_policy(iam.PolicyStatement(
             actions=["bedrock-agentcore:Invoke*", "bedrock-agentcore:GetGateway"],
-            resources=["*"],
+            resources=[gateway.gateway.attr_gateway_arn],
         ))
 
         # Logs

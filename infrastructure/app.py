@@ -22,6 +22,6 @@ db_stack = DatabaseStack(app, "DocintDatabaseStack", env=env)
 lambda_stack = LambdaStack(app, "DocintLambdaStack", database=db_stack, env=env)
 gateway_stack = GatewayStack(app, "DocintGatewayStack", lambdas=lambda_stack, env=env)
 AgentStack(app, "DocintAgentStack", gateway=gateway_stack, env=env)
-MonitoringStack(app, "DocintMonitoringStack", lambdas=lambda_stack, env=env)
+MonitoringStack(app, "DocintMonitoringStack", lambdas=lambda_stack, database=db_stack, env=env)
 
 app.synth()

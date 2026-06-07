@@ -3,5 +3,5 @@ RUN apt-get update && apt-get install -y cmake clang pkg-config && rm -rf /var/l
 RUN cargo install cargo-lambda
 WORKDIR /app
 COPY . .
-RUN cargo lambda build --release --arm64 -p lambda-search -p lambda-metadata -p lambda-compare
+RUN cargo lambda build --release --arm64 -p lambda-search -p lambda-metadata -p lambda-compare -p lambda-ingest
 # Artifacts land in /app/target/lambda/{lambda-search,lambda-metadata,lambda-compare}/bootstrap

@@ -3,18 +3,28 @@ from aws_cdk import (
     Duration,
     aws_cloudwatch as cw,
     aws_sns as sns,
+    aws_sns_subscriptions as sns_subscriptions,
     aws_cloudwatch_actions as cw_actions,
 )
 from constructs import Construct
 from stacks.lambda_stack import LambdaStack
 
 
+from stacks.database_stack import DatabaseStack
+
+
 class MonitoringStack(Stack):
-    def __init__(self, scope: Construct, id: str, lambdas: LambdaStack, **kwargs):
+    def __init__(self, scope: Construct, id: str, lambdas: LambdaStack, database: DatabaseStack, **kwargs):
         super().__init__(scope, id, **kwargs)
 
         # SNS topic for alarm notifications
         self.alarm_topic = sns.Topic(self, "AlarmTopic", topic_name="docint-alarms")
+
+        # Add email subscription for alarm notifications
+        self.alarm_topic.add_subscription(
+            sns_subscriptions.EmailSubscription("dcrearer@gmail.com")
+        )
+
         alarm_action = cw_actions.SnsAction(self.alarm_topic)
 
         functions = {
@@ -48,6 +58,42 @@ class MonitoringStack(Stack):
                 treat_missing_data=cw.TreatMissingData.NOT_BREACHING,
             )
             duration_alarm.add_alarm_action(alarm_action)
+
+        # --- Aurora Database Alarms ---
+        db_cluster = database.cluster
+
+        # CPU Utilization alarm (>80% for 10 minutes)
+        cpu_alarm = cw.Alarm(
+            self, "DbCpuAlarm",
+            alarm_name="docint-db-cpu-high",
+            metric=db_cluster.metric_cpu_utilization(period=Duration.minutes(5)),
+            threshold=80,
+            evaluation_periods=2,
+            treat_missing_data=cw.TreatMissingData.NOT_BREACHING,
+        )
+        cpu_alarm.add_alarm_action(alarm_action)
+
+        # Database Connections alarm (>80 connections)
+        connections_alarm = cw.Alarm(
+            self, "DbConnectionsAlarm",
+            alarm_name="docint-db-connections-high",
+            metric=db_cluster.metric_database_connections(period=Duration.minutes(5)),
+            threshold=80,
+            evaluation_periods=2,
+            treat_missing_data=cw.TreatMissingData.NOT_BREACHING,
+        )
+        connections_alarm.add_alarm_action(alarm_action)
+
+        # ACU Utilization alarm (>0.9 = scaling limit reached)
+        acu_alarm = cw.Alarm(
+            self, "DbAcuAlarm",
+            alarm_name="docint-db-acu-high",
+            metric=db_cluster.metric_acu_utilization(period=Duration.minutes(5)),
+            threshold=0.9,  # 90% of max ACU capacity
+            evaluation_periods=2,
+            treat_missing_data=cw.TreatMissingData.NOT_BREACHING,
+        )
+        acu_alarm.add_alarm_action(alarm_action)
 
         # --- Dashboard ---
         dashboard = cw.Dashboard(self, "Dashboard", dashboard_name="docint")

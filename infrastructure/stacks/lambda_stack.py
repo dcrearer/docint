@@ -6,6 +6,7 @@ from aws_cdk import (
     aws_ec2 as ec2,
     aws_s3 as s3,
     aws_s3_notifications as s3n,
+    aws_sqs as sqs,
 )
 from constructs import Construct
 from stacks.database_stack import DatabaseStack
@@ -106,6 +107,13 @@ class LambdaStack(Stack):
             **common_base,
         )
 
+        # Dead Letter Queue for failed ingest events
+        ingest_dlq = sqs.Queue(
+            self, "IngestDlq",
+            queue_name="docint-ingest-dlq",
+            retention_period=Duration.days(14),  # Keep failed events for 2 weeks
+        )
+
         # Ingest Lambda needs longer timeout for processing large documents
         self.ingest_fn = _lambda.Function(
             self, "IngestFn",
@@ -113,6 +121,7 @@ class LambdaStack(Stack):
             code=_lambda.Code.from_asset("../target/lambda/lambda-ingest"),
             role=ingest_role,  # Needs S3 + Bedrock for document processing
             timeout=Duration.minutes(5),  # Override default 30s timeout
+            dead_letter_queue=ingest_dlq,  # Capture failed invocations
             **{k: v for k, v in common_base.items() if k != "timeout"},
         )
 

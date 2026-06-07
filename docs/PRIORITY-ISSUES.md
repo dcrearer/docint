@@ -1,6 +1,6 @@
 # Docint — Priority Issues
 
-**Last Updated:** 2026-06-05
+**Last Updated:** 2026-06-07
 
 ## P0 — Critical (Fix Before Production)
 
@@ -66,6 +66,8 @@ All 4 critical security issues have been resolved and deployed to production. RL
 
 ## P1 — High (Security Gaps)
 
+**Summary: 2 of 5 P1 issues fixed (✅ #5, #6 complete)**
+
 ### ✅ 5. No Input Validation on `tenant_id` — **FIXED (Better Solution)**
 
 **Status:** ✅ **FIXED** - Removed tenant_id from MCP tool schemas entirely
@@ -91,13 +93,19 @@ Instead of validating tenant_id (which assumes the LLM should control it), we im
 
 ---
 
-### 6. Token Cache Stored in Plaintext
+### ✅ 6. Token Cache Stored in Plaintext — **FIXED**
 
-**File:** `crates/docint-cli/src/auth.rs:22-27`
+**File:** `crates/docint-cli/src/auth.rs`
 
 `~/.docint/tokens.json` stores `id_token` and `refresh_token` in plaintext with no file permission restrictions. Refresh tokens are long-lived.
 
-**Fix (minimum):** Set `0600` permissions on the cache file. Ideally use the OS keychain via the `keyring` crate.
+**Status:** ✅ **FIXED** in commit e6633ce
+- Implemented `save_cache()` with automatic 0600 permissions (owner read/write only)
+- Refactored token storage into `save_cache()` and `load_cache()` helpers
+- File created with restricted permissions immediately after write
+- **Verified:** Standard practice used by AWS CLI, git, kubectl
+
+**Note:** Explored OS keychain (`keyring` crate) but encountered macOS persistence issues. File-based with 0600 is the industry-standard approach for CLI token storage.
 
 ---
 

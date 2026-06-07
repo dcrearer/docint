@@ -1,5 +1,7 @@
 # Document Intelligence Service
 
+_Last updated: 2026-06-07_
+
 A production-grade RAG (Retrieval-Augmented Generation) system built with:
 - **Rust Lambda functions** for vector search (5-10x faster than Python)
 - **AgentCore Runtime** hosting a Claude-powered agent (container deployment, ARM64)

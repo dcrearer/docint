@@ -34,7 +34,7 @@ impl VectorStore {
             "INSERT INTO documents (tenant_id, title, source_key)
              VALUES ($1, $2, $3)
              ON CONFLICT (tenant_id, source_key) DO UPDATE
-                SET title = EXCLUDED.title, created_at = now()
+                SET title = EXCLUDED.title
              RETURNING *",
         )
         .bind(tenant_id)

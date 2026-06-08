@@ -86,6 +86,60 @@ async fn test_insert_document_upserts_on_conflict() {
 
 #[tokio::test]
 #[ignore]
+async fn test_created_at_immutable_on_reingest() {
+    let pool = setup_test_db().await.unwrap();
+    let tenant_id = "tenant-reingest";
+
+    // First ingest
+    let doc1 = db::with_tenant(&pool, tenant_id, |tx| {
+        Box::pin(async move {
+            VectorStore::insert_document_tx(
+                tx,
+                tenant_id,
+                "Original Title",
+                "s3://bucket/doc.txt",
+            )
+            .await
+        })
+    })
+    .await
+    .unwrap();
+
+    let original_created_at = doc1.created_at;
+
+    // Wait 1 second to ensure timestamp would differ if reset
+    tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+
+    // Re-ingest same document with different title
+    let doc2 = db::with_tenant(&pool, tenant_id, |tx| {
+        Box::pin(async move {
+            VectorStore::insert_document_tx(
+                tx,
+                tenant_id,
+                "Updated Title",
+                "s3://bucket/doc.txt",
+            )
+            .await
+        })
+    })
+    .await
+    .unwrap();
+
+    // Verify created_at unchanged, updated_at changed
+    assert_eq!(
+        doc2.created_at, original_created_at,
+        "created_at should be immutable on re-ingest"
+    );
+    assert!(
+        doc2.updated_at > doc2.created_at,
+        "updated_at should be newer than created_at after update"
+    );
+    assert_eq!(doc2.title, "Updated Title", "title should be updated");
+    assert_eq!(doc1.id, doc2.id, "should be same document (upsert)");
+}
+
+#[tokio::test]
+#[ignore]
 async fn test_insert_document_deletes_old_chunks_on_upsert() {
     let pool = setup_test_db().await.unwrap();
     let tenant_id = "tenant-upsert-chunks";

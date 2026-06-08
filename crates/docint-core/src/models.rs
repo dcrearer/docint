@@ -13,6 +13,7 @@ pub struct Document {
     pub title: String,
     pub source_key: String, // S3 key where the original file lives
     pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
     pub metadata: serde_json::Value,
 }
 
@@ -44,6 +45,7 @@ pub struct DocumentMetadata {
     pub title: String,
     pub source_key: String,
     pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
     pub metadata: serde_json::Value,
     pub chunk_count: i32,
 }

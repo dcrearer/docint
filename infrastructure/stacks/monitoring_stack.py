@@ -22,7 +22,7 @@ class MonitoringStack(Stack):
 
         # Add email subscription for alarm notifications
         self.alarm_topic.add_subscription(
-            sns_subscriptions.EmailSubscription("dcrearer@gmail.com")
+            sns_subscriptions.EmailSubscription("crearerd@amazon.com")
         )
 
         alarm_action = cw_actions.SnsAction(self.alarm_topic)

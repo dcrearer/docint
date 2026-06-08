@@ -4,5 +4,6 @@
 pub mod chunker;
 pub mod db;
 pub mod embeddings;
+pub mod lambda_init;
 pub mod models;
 pub mod store;

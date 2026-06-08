@@ -2,7 +2,7 @@
 //! Accepts a text query, embeds it via Bedrock Titan, then runs
 //! hybrid (vector + full-text) search with RRF ranking.
 
-use docint_core::{db, embeddings::Embedder, store::VectorStore};
+use docint_core::{lambda_init, store::VectorStore};
 use lambda_runtime::{Error, LambdaEvent, service_fn};
 use serde::{Deserialize, Serialize};
 use tokio::sync::OnceCell;
@@ -28,29 +28,17 @@ struct SearchHit {
     distance: f64,
 }
 
-struct AppState {
-    store: VectorStore,
-    embedder: Embedder,
-}
-
 /// Shared state initialized once on cold start, reused across invocations.
 /// OnceCell ensures the DB pool and embedder are created exactly once,
 /// even if multiple requests arrive concurrently during init.
-static STATE: OnceCell<AppState> = OnceCell::const_new();
+static STATE: OnceCell<lambda_init::AppState> = OnceCell::const_new();
 
-async fn get_state() -> &'static AppState {
+async fn get_state() -> &'static lambda_init::AppState {
     STATE
         .get_or_init(|| async {
-            let url = db::resolve_database_url()
+            lambda_init::init_app_state()
                 .await
-                .expect("Failed to resolve database credentials");
-            let pool = db::create_pool(&url)
-                .await
-                .expect("Failed to connect to database");
-            AppState {
-                store: VectorStore::new(pool),
-                embedder: Embedder::new().await,
-            }
+                .expect("Failed to initialize app state")
         })
         .await
 }
@@ -89,10 +77,6 @@ async fn handler(event: LambdaEvent<Request>) -> Result<Response, Error> {
 
 #[tokio::main]
 async fn main() -> Result<(), Error> {
-    tracing_subscriber::fmt()
-        .json()
-        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
-        .init();
-
+    lambda_init::setup_tracing();
     lambda_runtime::run(service_fn(handler)).await
 }

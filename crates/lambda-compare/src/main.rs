@@ -2,7 +2,7 @@
 //! Takes a query and two document IDs, finds the most relevant chunks
 //! from each document, and returns them side-by-side for comparison.
 
-use docint_core::{db, embeddings::Embedder, store::VectorStore};
+use docint_core::{lambda_init, store::VectorStore};
 use lambda_runtime::{Error, LambdaEvent, service_fn};
 use serde::{Deserialize, Serialize};
 use tokio::sync::OnceCell;
@@ -38,24 +38,14 @@ struct Response {
     document_b: DocResult,
 }
 
-struct AppState {
-    store: VectorStore,
-    embedder: Embedder,
-}
+static STATE: OnceCell<lambda_init::AppState> = OnceCell::const_new();
 
-static STATE: OnceCell<AppState> = OnceCell::const_new();
-
-async fn get_state() -> &'static AppState {
+async fn get_state() -> &'static lambda_init::AppState {
     STATE
         .get_or_init(|| async {
-            let url = db::resolve_database_url()
+            lambda_init::init_app_state()
                 .await
-                .expect("Failed to resolve database credentials");
-            let pool = db::create_pool(&url).await.expect("Failed to connect");
-            AppState {
-                store: VectorStore::new(pool),
-                embedder: Embedder::new().await,
-            }
+                .expect("Failed to initialize app state")
         })
         .await
 }
@@ -115,10 +105,6 @@ async fn handler(event: LambdaEvent<Request>) -> Result<Response, Error> {
 
 #[tokio::main]
 async fn main() -> Result<(), Error> {
-    tracing_subscriber::fmt()
-        .json()
-        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
-        .init();
-
+    lambda_init::setup_tracing();
     lambda_runtime::run(service_fn(handler)).await
 }

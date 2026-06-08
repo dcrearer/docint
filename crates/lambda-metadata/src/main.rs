@@ -2,7 +2,7 @@
 //! Lists all documents for a tenant, or returns details for a specific document.
 //! Includes chunk count for each document.
 
-use docint_core::{db, store::VectorStore};
+use docint_core::{lambda_init, store::VectorStore};
 use lambda_runtime::{Error, LambdaEvent, service_fn};
 use serde::{Deserialize, Serialize};
 use tokio::sync::OnceCell;
@@ -35,11 +35,9 @@ static STORE: OnceCell<VectorStore> = OnceCell::const_new();
 async fn get_store() -> &'static VectorStore {
     STORE
         .get_or_init(|| async {
-            let url = db::resolve_database_url()
+            lambda_init::init_store()
                 .await
-                .expect("Failed to resolve database credentials");
-            let pool = db::create_pool(&url).await.expect("Failed to connect");
-            VectorStore::new(pool)
+                .expect("Failed to initialize store")
         })
         .await
 }
@@ -84,10 +82,6 @@ async fn handler(event: LambdaEvent<Request>) -> Result<Response, Error> {
 
 #[tokio::main]
 async fn main() -> Result<(), Error> {
-    tracing_subscriber::fmt()
-        .json()
-        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
-        .init();
-
+    lambda_init::setup_tracing();
     lambda_runtime::run(service_fn(handler)).await
 }

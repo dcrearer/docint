@@ -5,7 +5,7 @@
 //! in PostgreSQL + pgvector.
 
 use aws_sdk_s3::Client as S3Client;
-use docint_core::{chunker::Chunker, db, embeddings::Embedder, store::VectorStore};
+use docint_core::{chunker::Chunker, db, embeddings::Embedder, lambda_init, store::VectorStore};
 use lambda_runtime::{Error, LambdaEvent, service_fn};
 use serde::{Deserialize, Serialize};
 use tokio::sync::OnceCell;
@@ -210,11 +210,7 @@ async fn handler(event: LambdaEvent<IngestEvent>) -> Result<Response, Error> {
 
 #[tokio::main]
 async fn main() -> Result<(), Error> {
-    tracing_subscriber::fmt()
-        .json()
-        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
-        .init();
-
+    lambda_init::setup_tracing();
     lambda_runtime::run(service_fn(handler)).await
 }
 

@@ -216,9 +216,9 @@ Failed S3 event ingestions are retried twice then **lost forever**.
 
 Alarms fire into the void — no email, Slack, or PagerDuty integration.
 
-**Status:** ✅ **FIXED** in commit d97f8c7
-- Added email subscription to dcrearer@gmail.com
-- Requires confirmation on first deploy
+**Status:** ✅ **FIXED** in commit d97f8c7, updated in commit a595cfa
+- Added email subscription for alarm notifications
+- Confirmed and operational
 - All CloudWatch alarms now notify operations team
 
 ---

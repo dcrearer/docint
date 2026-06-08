@@ -129,7 +129,6 @@ impl VectorStore {
             ),
             fts_ranked AS (
                 SELECT c.id, c.document_id, c.content, d.title,
-                       c.embedding <=> $1 AS distance,
                        ROW_NUMBER() OVER (ORDER BY ts_rank(c.tsv, websearch_to_tsquery('english', $3)) DESC) AS rank
                 FROM chunks c
                 JOIN documents d ON d.id = c.document_id
@@ -140,7 +139,7 @@ impl VectorStore {
                 SELECT COALESCE(v.id, f.id) AS chunk_id,
                        COALESCE(v.document_id, f.document_id) AS document_id,
                        COALESCE(v.content, f.content) AS content,
-                       COALESCE(v.distance, f.distance) AS distance,
+                       v.distance AS distance,
                        COALESCE(v.title, f.title) AS title,
                        COALESCE(1.0 / (60 + v.rank), 0.0) + COALESCE(1.0 / (60 + f.rank), 0.0) AS rrf_score
                 FROM vector_ranked v

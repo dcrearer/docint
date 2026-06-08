@@ -165,4 +165,3 @@ class MonitoringStack(Stack):
                 )],
             ),
         )
-# Redeploy to recreate SNS topic

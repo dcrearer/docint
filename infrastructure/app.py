@@ -10,6 +10,11 @@ from stacks.auth_stack import AuthStack
 
 app = cdk.App()
 
+# Add resource tags for cost allocation and compliance
+cdk.Tags.of(app).add("Project", "docint")
+cdk.Tags.of(app).add("ManagedBy", "CDK")
+cdk.Tags.of(app).add("Environment", os.environ.get("ENVIRONMENT", "production"))
+
 # Uses CDK_DEFAULT_ACCOUNT/CDK_DEFAULT_REGION from `aws configure` or env vars.
 # No hardcoded account IDs.
 env = cdk.Environment(

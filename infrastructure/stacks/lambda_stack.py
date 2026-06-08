@@ -55,10 +55,7 @@ class LambdaStack(Stack):
             actions=["bedrock:InvokeModel"],
             resources=["arn:aws:bedrock:*::foundation-model/amazon.titan-embed-text-v2:0"],
         ))
-        ingest_role.add_to_policy(iam.PolicyStatement(
-            actions=["s3:GetObject"],
-            resources=["arn:aws:s3:::docint-*/*"],
-        ))
+        # S3 permissions granted via grant_read() below (line 154) - no manual policy needed
 
         # Pass secret ARN instead of plaintext credentials
         # Lambdas will resolve this at runtime using the AWS SDK

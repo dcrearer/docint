@@ -22,9 +22,12 @@ env = cdk.Environment(
     region=os.environ.get("CDK_DEFAULT_REGION", "us-east-1"),
 )
 
+# Environment suffix for multi-environment deployments (empty = production/default)
+environment = os.environ.get("ENVIRONMENT", "")
+
 AuthStack(app, "DocintAuthStack", env=env)
 db_stack = DatabaseStack(app, "DocintDatabaseStack", env=env)
-lambda_stack = LambdaStack(app, "DocintLambdaStack", database=db_stack, env=env)
+lambda_stack = LambdaStack(app, "DocintLambdaStack", database=db_stack, environment=environment, env=env)
 gateway_stack = GatewayStack(app, "DocintGatewayStack", lambdas=lambda_stack, env=env)
 AgentStack(app, "DocintAgentStack", gateway=gateway_stack, env=env)
 MonitoringStack(app, "DocintMonitoringStack", lambdas=lambda_stack, database=db_stack, env=env)

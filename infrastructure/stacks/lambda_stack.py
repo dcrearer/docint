@@ -33,8 +33,11 @@ class LambdaStack(Stack):
         database.cluster.secret.grant_read(role)
         return role
 
-    def __init__(self, scope: Construct, id: str, database: DatabaseStack, **kwargs):
+    def __init__(self, scope: Construct, id: str, database: DatabaseStack, environment: str = "", **kwargs):
         super().__init__(scope, id, **kwargs)
+        self.environment = environment
+        # Helper for backward-compatible naming: only add suffix if environment is explicitly set
+        self.env_suffix = f"-{environment}" if environment else ""
 
         # Security group for Lambdas
         lambda_sg = database.lambda_sg
@@ -82,7 +85,7 @@ class LambdaStack(Stack):
 
         self.search_fn = _lambda.Function(
             self, "SearchFn",
-            function_name="docint-search",
+            function_name=f"docint-search{self.env_suffix}",
             code=_lambda.Code.from_asset("../target/lambda/lambda-search"),
             role=query_role,  # Needs Bedrock for query embeddings
             tracing=_lambda.Tracing.ACTIVE,  # Enable X-Ray tracing
@@ -91,7 +94,7 @@ class LambdaStack(Stack):
 
         self.metadata_fn = _lambda.Function(
             self, "MetadataFn",
-            function_name="docint-metadata",
+            function_name=f"docint-metadata{self.env_suffix}",
             code=_lambda.Code.from_asset("../target/lambda/lambda-metadata"),
             role=metadata_role,  # DB access only, no S3 or Bedrock
             tracing=_lambda.Tracing.ACTIVE,  # Enable X-Ray tracing
@@ -100,7 +103,7 @@ class LambdaStack(Stack):
 
         self.compare_fn = _lambda.Function(
             self, "CompareFn",
-            function_name="docint-compare",
+            function_name=f"docint-compare{self.env_suffix}",
             code=_lambda.Code.from_asset("../target/lambda/lambda-compare"),
             role=query_role,  # Needs Bedrock for query embeddings (shares with search)
             tracing=_lambda.Tracing.ACTIVE,  # Enable X-Ray tracing
@@ -110,14 +113,14 @@ class LambdaStack(Stack):
         # Dead Letter Queue for failed ingest events
         ingest_dlq = sqs.Queue(
             self, "IngestDlq",
-            queue_name="docint-ingest-dlq",
+            queue_name=f"docint-ingest-dlq{self.env_suffix}",
             retention_period=Duration.days(14),  # Keep failed events for 2 weeks
         )
 
         # Ingest Lambda needs longer timeout for processing large documents
         self.ingest_fn = _lambda.Function(
             self, "IngestFn",
-            function_name="docint-ingest",
+            function_name=f"docint-ingest{self.env_suffix}",
             code=_lambda.Code.from_asset("../target/lambda/lambda-ingest"),
             role=ingest_role,  # Needs S3 + Bedrock for document processing
             timeout=Duration.minutes(5),  # Override default 30s timeout
@@ -129,7 +132,7 @@ class LambdaStack(Stack):
         # S3 bucket for document ingestion with auto-trigger
         self.docs_bucket = s3.Bucket(
             self, "DocsBucket",
-            bucket_name=f"docint-docs-{self.account}",
+            bucket_name=f"docint-docs{self.env_suffix}-{self.account}",
             encryption=s3.BucketEncryption.S3_MANAGED,
             block_public_access=s3.BlockPublicAccess.BLOCK_ALL,
             enforce_ssl=True,

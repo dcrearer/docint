@@ -85,6 +85,7 @@ class LambdaStack(Stack):
             function_name="docint-search",
             code=_lambda.Code.from_asset("../target/lambda/lambda-search"),
             role=query_role,  # Needs Bedrock for query embeddings
+            tracing=_lambda.Tracing.ACTIVE,  # Enable X-Ray tracing
             **common_base,
         )
 
@@ -93,6 +94,7 @@ class LambdaStack(Stack):
             function_name="docint-metadata",
             code=_lambda.Code.from_asset("../target/lambda/lambda-metadata"),
             role=metadata_role,  # DB access only, no S3 or Bedrock
+            tracing=_lambda.Tracing.ACTIVE,  # Enable X-Ray tracing
             **common_base,
         )
 
@@ -101,6 +103,7 @@ class LambdaStack(Stack):
             function_name="docint-compare",
             code=_lambda.Code.from_asset("../target/lambda/lambda-compare"),
             role=query_role,  # Needs Bedrock for query embeddings (shares with search)
+            tracing=_lambda.Tracing.ACTIVE,  # Enable X-Ray tracing
             **common_base,
         )
 
@@ -119,6 +122,7 @@ class LambdaStack(Stack):
             role=ingest_role,  # Needs S3 + Bedrock for document processing
             timeout=Duration.minutes(5),  # Override default 30s timeout
             dead_letter_queue=ingest_dlq,  # Capture failed invocations
+            tracing=_lambda.Tracing.ACTIVE,  # Enable X-Ray tracing
             **{k: v for k, v in common_base.items() if k != "timeout"},
         )
 

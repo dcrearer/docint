@@ -31,6 +31,7 @@ class DatabaseStack(Stack):
             ("SecretsManager", ec2.InterfaceVpcEndpointAwsService.SECRETS_MANAGER),
             ("STS", ec2.InterfaceVpcEndpointAwsService.STS),
             ("CloudWatchLogs", ec2.InterfaceVpcEndpointAwsService.CLOUDWATCH_LOGS),
+            ("XRay", ec2.InterfaceVpcEndpointAwsService.XRAY),
         ]:
             self.vpc.add_interface_endpoint(
                 f"{svc_name}Endpoint",

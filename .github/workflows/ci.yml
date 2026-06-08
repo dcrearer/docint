@@ -147,15 +147,8 @@ jobs:
         working-directory: infrastructure
         run: cdk diff --all || true
 
-      # Deploy all stacks in dependency order.
-      # --require-approval never: skip the interactive prompt
-      # (safe because we reviewed the diff above, and this only
-      # runs on main after PR review).
-      - name: CDK deploy
-        working-directory: infrastructure
-        run: cdk deploy --all --require-approval never
-
-      # Run SQL migrations via RDS Data API (no VPC access needed).
+      # Run SQL migrations BEFORE deployment to prevent code-schema mismatch.
+      # Runs via RDS Data API (no VPC access needed).
       # Splits each file on semicolons since Data API doesn't support multi-statement SQL.
       - name: Run migrations
         run: |
@@ -174,3 +167,12 @@ jobs:
                 --sql "$stmt" || echo "  (already applied or skipped)"
             done < <(sed 's/--.*$//' "$f" | tr '\n' ' ' | sed 's/;/;\n/g' | sed 's/^[[:space:]]*//' | grep -v '^$')
           done
+
+      # Deploy all stacks in dependency order.
+      # Migrations run first to ensure schema is compatible with new code.
+      # --require-approval never: skip the interactive prompt
+      # (safe because we reviewed the diff above, and this only
+      # runs on main after PR review).
+      - name: CDK deploy
+        working-directory: infrastructure
+        run: cdk deploy --all --require-approval never

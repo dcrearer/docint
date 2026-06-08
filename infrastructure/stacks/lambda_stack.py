@@ -35,7 +35,6 @@ class LambdaStack(Stack):
 
     def __init__(self, scope: Construct, id: str, database: DatabaseStack, environment: str = "", **kwargs):
         super().__init__(scope, id, **kwargs)
-        self.environment = environment
         # Helper for backward-compatible naming: only add suffix if environment is explicitly set
         self.env_suffix = f"-{environment}" if environment else ""
 

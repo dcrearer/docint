@@ -139,13 +139,6 @@ class AgentStack(Stack):
                 "GATEWAY_URL": gateway.gateway.attr_gateway_url,
                 "MODEL_ID": "us.anthropic.claude-haiku-4-5-20251001-v1:0",
                 "MEMORY_ID": memory.attr_memory_id,
-                # ADOT observability configuration
-                "AGENT_OBSERVABILITY_ENABLED": "true",
-                "OTEL_PYTHON_DISTRO": "aws_distro",
-                "OTEL_PYTHON_CONFIGURATOR": "aws_configurator",
-                "OTEL_RESOURCE_ATTRIBUTES": "service.name=docint_agent",
-                "OTEL_EXPORTER_OTLP_PROTOCOL": "http/protobuf",
-                "OTEL_TRACES_EXPORTER": "otlp",
             },
             network_configuration=agentcore.CfnRuntime.NetworkConfigurationProperty(
                 network_mode="PUBLIC",

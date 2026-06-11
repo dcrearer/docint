@@ -4,4 +4,4 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 COPY agent.py .
 EXPOSE 8080
-CMD ["python", "agent.py"]
+CMD ["opentelemetry-instrument", "python", "agent.py"]

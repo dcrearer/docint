@@ -12,16 +12,15 @@ from bedrock_agentcore import BedrockAgentCoreApp
 from strands import Agent
 from strands.models import BedrockModel
 from strands.tools.mcp import MCPClient
-from strands.telemetry import StrandsTelemetry
 from mcp_proxy_for_aws.client import aws_iam_streamablehttp_client
 from bedrock_agentcore.memory.integrations.strands.config import AgentCoreMemoryConfig, RetrievalConfig
 from bedrock_agentcore.memory.integrations.strands.session_manager import AgentCoreMemorySessionManager
 
 app = BedrockAgentCoreApp(debug=True)
 
-# Enable Strands telemetry - uses ADOT's global tracer provider set by opentelemetry-instrument
-strands_telemetry = StrandsTelemetry()
-logger.info("Strands telemetry initialized")
+# NOTE: No StrandsTelemetry() needed - opentelemetry-instrument sets up global tracer
+# Strands will automatically use the global tracer provider from ADOT
+logger.info("Strands using ADOT global tracer (set by opentelemetry-instrument)")
 
 GATEWAY_URL = os.environ.get("GATEWAY_URL", "")
 MODEL_ID = os.environ.get("MODEL_ID", "us.anthropic.claude-haiku-4-5-20251001-v1:0")

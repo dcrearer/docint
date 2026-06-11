@@ -58,7 +58,7 @@ def enable_transaction_search(region: str):
     # 2. Update X-Ray trace segment destination to CloudWatch Logs
     print("→ Updating X-Ray trace segment destination to CloudWatch Logs...")
     try:
-        xray.update_trace_segment_destination(destination="CloudWatchLogs")
+        xray.update_trace_segment_destination(Destination="CloudWatchLogs")
         print("  ✓ Trace destination set to CloudWatch Logs")
     except Exception as e:
         error_msg = str(e)
@@ -71,9 +71,11 @@ def enable_transaction_search(region: str):
     print("→ Configuring X-Ray sampling (100%)...")
     try:
         xray.update_indexing_rule(
-            rule={
-                "Sampled": True,
-                "SamplingPercentage": 100.0
+            Name="Default",
+            Rule={
+                "Probabilistic": {
+                    "DesiredSamplingPercentage": 1.0
+                }
             }
         )
         print("  ✓ Sampling configured at 100%")

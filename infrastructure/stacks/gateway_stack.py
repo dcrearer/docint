@@ -73,7 +73,7 @@ class GatewayStack(Stack):
             self, "SearchTarget",
             gateway=self.gateway,
             lambda_fn=lambdas.search_fn,
-            tool_name="search-documents",
+            tool_name="search_documents",
             description="Hybrid vector + full-text search over documents",
             properties={
                 "query": {"type": "string", "description": "Search query text"},
@@ -86,7 +86,7 @@ class GatewayStack(Stack):
             self, "MetadataTarget",
             gateway=self.gateway,
             lambda_fn=lambdas.metadata_fn,
-            tool_name="get-document-metadata",
+            tool_name="get_document_metadata",
             description="List documents or get metadata for a specific document",
             properties={
                 "document_id": {"type": "string", "description": "Optional document ID"},
@@ -99,7 +99,7 @@ class GatewayStack(Stack):
             self, "CompareTarget",
             gateway=self.gateway,
             lambda_fn=lambdas.compare_fn,
-            tool_name="compare-documents",
+            tool_name="compare_documents",
             description="Compare two documents side-by-side for a query",
             properties={
                 "query": {"type": "string", "description": "Comparison query"},

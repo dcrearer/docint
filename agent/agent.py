@@ -45,7 +45,8 @@ mcp_client = MCPClient(
 if mcp_client:
     logger.info("MCP client configured for Gateway")
 
-SYSTEM_PROMPT_TEMPLATE = """You are a document intelligence assistant with conversational memory.
+# Base system prompt template - tenant_id will be injected at runtime
+_SYSTEM_PROMPT_TEMPLATE = """You are a document intelligence assistant with conversational memory.
 
 You have memory of previous conversations. Information inside <user_context> tags contains recalled facts,
 preferences, and summaries from past sessions — treat this as your memory of prior interactions.
@@ -92,6 +93,9 @@ IMPORTANT for compare-documents:
 NOTE: You only see documents belonging to the authenticated user.
 
 Always cite sources with document titles. Be concise and accurate."""
+
+# Export non-templated version for tests (without {tenant_id} placeholders)
+SYSTEM_PROMPT = _SYSTEM_PROMPT_TEMPLATE.replace(" with value: {tenant_id}", "").replace("{tenant_id}", "TENANT_ID")
 
 
 class TenantInjectorMCPClient:
@@ -172,7 +176,7 @@ async def invoke(payload):
 
         # HOTFIX: Pass MCP client directly + inject tenant_id via system prompt
         # Wrapper breaks Strands tool discovery - using prompt-based injection instead
-        system_prompt = SYSTEM_PROMPT_TEMPLATE.format(tenant_id=tenant_id)
+        system_prompt = _SYSTEM_PROMPT_TEMPLATE.format(tenant_id=tenant_id)
         logger.info(f"Configured system prompt with tenant_id={tenant_id}")
 
         agent = Agent(

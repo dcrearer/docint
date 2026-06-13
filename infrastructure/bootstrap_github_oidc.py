@@ -76,9 +76,11 @@ class GitHubOidcStack(Stack):
                     "iam:GetRolePolicy",
                     "iam:TagRole",
                     "iam:UntagRole",
-                    # RDS - read-only for connection info
+                    # RDS - read-only for connection info + Data API for migrations
                     "rds:DescribeDBClusters",
                     "rds:DescribeDBInstances",
+                    "rds-data:ExecuteStatement",
+                    "rds-data:BatchExecuteStatement",
                     # Secrets Manager - read secret ARNs
                     "secretsmanager:DescribeSecret",
                     "secretsmanager:GetSecretValue",

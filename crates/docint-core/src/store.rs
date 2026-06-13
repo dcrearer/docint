@@ -167,7 +167,7 @@ impl VectorStore {
         tenant_id: &str,
     ) -> Result<Option<DocumentMetadata>> {
         let meta = sqlx::query_as::<_, DocumentMetadata>(
-            "SELECT d.id, d.tenant_id, d.title, d.source_key, d.created_at, d.metadata,
+            "SELECT d.id, d.tenant_id, d.title, d.source_key, d.created_at, d.updated_at, d.metadata,
                     COUNT(c.id)::int AS chunk_count
              FROM documents d
              LEFT JOIN chunks c ON c.document_id = d.id
@@ -189,7 +189,7 @@ impl VectorStore {
         limit: i64,
     ) -> Result<Vec<DocumentMetadata>> {
         let docs = sqlx::query_as::<_, DocumentMetadata>(
-            "SELECT d.id, d.tenant_id, d.title, d.source_key, d.created_at, d.metadata,
+            "SELECT d.id, d.tenant_id, d.title, d.source_key, d.created_at, d.updated_at, d.metadata,
                     COUNT(c.id)::int AS chunk_count
              FROM documents d
              LEFT JOIN chunks c ON c.document_id = d.id

@@ -10,9 +10,16 @@ use uuid::Uuid;
 
 #[derive(Deserialize)]
 struct Request {
+    #[serde(default = "default_tenant_id")]
     tenant_id: String,
     document_id: Option<Uuid>,
     limit: Option<i64>,
+}
+
+fn default_tenant_id() -> String {
+    // HOTFIX: Allow tools to work without tenant_id parameter
+    // RLS at database level still enforces tenant isolation
+    std::env::var("DEFAULT_TENANT_ID").unwrap_or_else(|_| "default-tenant".to_string())
 }
 
 #[derive(Serialize)]

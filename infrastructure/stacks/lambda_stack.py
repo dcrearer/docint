@@ -76,6 +76,9 @@ class LambdaStack(Stack):
                 "DB_PORT": "5432",
                 "DB_NAME": "docint",
                 "RUST_LOG": "info",
+                # HOTFIX: Default tenant for tools without tenant_id parameter
+                # TODO: Extract tenant from IAM context instead
+                "DEFAULT_TENANT_ID": "f438e448-90f1-7014-9137-307e65766e46",
             },
             vpc=database.vpc,
             vpc_subnets=ec2.SubnetSelection(subnet_type=ec2.SubnetType.PRIVATE_ISOLATED),

@@ -13,8 +13,13 @@ struct Request {
     query: String,
     document_id_a: Uuid,
     document_id_b: Uuid,
+    #[serde(default = "default_tenant_id")]
     tenant_id: String,
     limit: Option<i64>,
+}
+
+fn default_tenant_id() -> String {
+    std::env::var("DEFAULT_TENANT_ID").unwrap_or_else(|_| "default-tenant".to_string())
 }
 
 #[derive(Serialize)]

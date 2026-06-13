@@ -155,14 +155,14 @@ class TestSystemPrompt:
     """Test suite for system prompt correctness."""
 
     def test_system_prompt_includes_compare_documents_workflow(self):
-        """Verify prompt explains compare_documents requires document IDs from metadata."""
+        """Verify prompt explains compare-documents requires document IDs from metadata."""
         from agent import SYSTEM_PROMPT
 
         # Check that the prompt mentions the workflow
-        assert "compare_documents" in SYSTEM_PROMPT
+        assert "compare-documents" in SYSTEM_PROMPT
         assert "document_id_a" in SYSTEM_PROMPT
         assert "document_id_b" in SYSTEM_PROMPT
-        assert "get_document_metadata FIRST" in SYSTEM_PROMPT or "call get_document_metadata first" in SYSTEM_PROMPT.lower()
+        assert "get-document-metadata FIRST" in SYSTEM_PROMPT or "call get-document-metadata first" in SYSTEM_PROMPT.lower()
 
     def test_system_prompt_explains_document_ids_are_uuids(self):
         """Verify prompt explains document IDs are UUIDs, not filenames."""
@@ -175,15 +175,15 @@ class TestSystemPrompt:
         """Verify prompt documents all required tool parameters."""
         from agent import SYSTEM_PROMPT
 
-        # search_documents parameters
-        assert "search_documents" in SYSTEM_PROMPT
+        # search-documents parameters
+        assert "search-documents" in SYSTEM_PROMPT
         assert "query" in SYSTEM_PROMPT
 
-        # get_document_metadata parameters
-        assert "get_document_metadata" in SYSTEM_PROMPT
+        # get-document-metadata parameters
+        assert "get-document-metadata" in SYSTEM_PROMPT
         assert "document_id" in SYSTEM_PROMPT
 
-        # compare_documents parameters
-        assert "compare_documents" in SYSTEM_PROMPT
+        # compare-documents parameters
+        assert "compare-documents" in SYSTEM_PROMPT
         assert "document_id_a" in SYSTEM_PROMPT
         assert "document_id_b" in SYSTEM_PROMPT

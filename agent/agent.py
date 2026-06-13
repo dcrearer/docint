@@ -45,7 +45,7 @@ mcp_client = MCPClient(
 if mcp_client:
     logger.info("MCP client configured for Gateway")
 
-SYSTEM_PROMPT = """You are a document intelligence assistant with conversational memory.
+SYSTEM_PROMPT_TEMPLATE = """You are a document intelligence assistant with conversational memory.
 
 You have memory of previous conversations. Information inside <user_context> tags contains recalled facts,
 preferences, and summaries from past sessions — treat this as your memory of prior interactions.
@@ -59,14 +59,17 @@ CRITICAL RULES:
 2. NEVER answer questions about documents using only memory.
 3. Memory is for user preferences and conversation history, NOT current document inventory.
 4. Document state changes between sessions - always fetch fresh data from tools.
+5. CRITICAL: ALL tool calls MUST include tenant_id parameter with value: {tenant_id}
 
 Available tools and their EXACT parameters:
 
 1. search-documents
    - query (string, required): The search query
+   - tenant_id (string, required): ALWAYS use {tenant_id}
    - limit (integer, optional): Max results to return
 
 2. get-document-metadata
+   - tenant_id (string, required): ALWAYS use {tenant_id}
    - document_id (string, optional): Specific document ID to retrieve
    - limit (integer, optional): Max documents to list
 
@@ -74,6 +77,7 @@ Available tools and their EXACT parameters:
    - query (string, required): What aspect to compare
    - document_id_a (string, required): First document's ID (UUID)
    - document_id_b (string, required): Second document's ID (UUID)
+   - tenant_id (string, required): ALWAYS use {tenant_id}
    - limit (integer, optional): Max matches per document
 
 IMPORTANT for compare-documents:
@@ -85,7 +89,7 @@ IMPORTANT for compare-documents:
   3. Find the IDs for documents with those titles
   4. Call compare-documents with the actual UUIDs
 
-NOTE: You only see documents belonging to the authenticated user. Tenant isolation is handled automatically.
+NOTE: You only see documents belonging to the authenticated user.
 
 Always cite sources with document titles. Be concise and accurate."""
 
@@ -166,15 +170,15 @@ async def invoke(payload):
         else:
             logger.warning("MEMORY_ID not set, skipping memory")
 
-        # Wrap MCP client with tenant_id injector
-        tenant_aware_mcp = None
-        if mcp_client:
-            tenant_aware_mcp = TenantInjectorMCPClient(tenant_id, mcp_client)
+        # HOTFIX: Pass MCP client directly + inject tenant_id via system prompt
+        # Wrapper breaks Strands tool discovery - using prompt-based injection instead
+        system_prompt = SYSTEM_PROMPT_TEMPLATE.format(tenant_id=tenant_id)
+        logger.info(f"Configured system prompt with tenant_id={tenant_id}")
 
         agent = Agent(
             model=model,
-            system_prompt=SYSTEM_PROMPT,
-            tools=[tenant_aware_mcp] if tenant_aware_mcp else [],
+            system_prompt=system_prompt,
+            tools=[mcp_client] if mcp_client else [],
             session_manager=session_manager,
         )
 

@@ -91,7 +91,10 @@ Always cite sources with document titles. Be concise and accurate."""
 
 
 class TenantInjectorMCPClient:
-    """Wrapper that injects tenant_id into all MCP tool calls."""
+    """Wrapper that injects tenant_id into all MCP tool calls.
+
+    Properly proxies MCP protocol to work with Strands Agent tool discovery.
+    """
 
     def __init__(self, tenant_id: str, mcp_client: MCPClient):
         self.tenant_id = tenant_id
@@ -107,6 +110,25 @@ class TenantInjectorMCPClient:
     def __getattr__(self, name):
         """Delegate all other attributes to the wrapped client."""
         return getattr(self.mcp_client, name)
+
+    def __dir__(self):
+        """Expose all attributes from wrapped client for introspection."""
+        return dir(self.mcp_client)
+
+    @property
+    def tools(self):
+        """Proxy tools property for Strands Agent tool discovery.
+
+        This is critical for Strands to discover available tools during
+        Agent initialization. Without this explicit property, Strands
+        cannot see the tools from the wrapped MCP client.
+        """
+        if hasattr(self.mcp_client, 'tools'):
+            tools = self.mcp_client.tools
+            logger.info(f"Exposing {len(tools) if isinstance(tools, (list, dict)) else 'unknown'} tools from MCP client")
+            return tools
+        logger.warning("MCP client has no 'tools' attribute")
+        return []
 
 
 @app.entrypoint

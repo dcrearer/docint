@@ -95,7 +95,7 @@ async fn handler(event: LambdaEvent<Request>) -> Result<Response, Error> {
                 .map(|r| ChunkHit {
                     chunk_id: r.chunk_id.to_string(),
                     content: r.content,
-                    distance: r.distance,
+                    distance: r.distance.unwrap_or(999.0), // Default to high distance if embedding missing
                 })
                 .collect(),
         }

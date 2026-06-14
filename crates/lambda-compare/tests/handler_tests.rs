@@ -146,7 +146,7 @@ async fn simulate_handler(
                 .map(|r| ChunkHit {
                     chunk_id: r.chunk_id.to_string(),
                     content: r.content,
-                    distance: r.distance,
+                    distance: r.distance.unwrap_or(999.0),
                 })
                 .collect(),
         }

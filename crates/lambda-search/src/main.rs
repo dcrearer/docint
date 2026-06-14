@@ -30,7 +30,7 @@ struct SearchHit {
     document_id: String,
     title: String,
     content: String,
-    distance: f64,
+    distance: f64, // Will use unwrap_or default for missing values
 }
 
 /// Shared state initialized once on cold start, reused across invocations.
@@ -74,7 +74,7 @@ async fn handler(event: LambdaEvent<Request>) -> Result<Response, Error> {
                 document_id: r.document_id.to_string(),
                 title: r.title,
                 content: r.content,
-                distance: r.distance,
+                distance: r.distance.unwrap_or(999.0), // Default to high distance if embedding missing
             })
             .collect(),
     })

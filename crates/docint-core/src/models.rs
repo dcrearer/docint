@@ -33,7 +33,8 @@ pub struct SearchResult {
     pub chunk_id: Uuid,
     pub document_id: Uuid,
     pub content: String,
-    pub distance: f64, // cosine distance: 0 = identical, 2 = opposite
+    #[serde(default)]
+    pub distance: Option<f64>, // cosine distance: 0 = identical, 2 = opposite; None if embedding missing
     pub title: String,
 }
 

@@ -45,7 +45,7 @@ class EvaluationStack(Stack):
                 "logs:FilterLogEvents",
             ],
             resources=[
-                f"arn:aws:logs:{self.region}:{self.account}:log-group:/aws/bedrock-agentcore/runtimes/*",
+                f"arn:aws:logs:{self.region}:{self.account}:log-group:/aws/bedrock-agentcore/runtimes/*:*",
                 f"arn:aws:logs:{self.region}:{self.account}:log-group:aws/spans:*",
             ],
         ))

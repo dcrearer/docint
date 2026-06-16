@@ -1,14 +1,12 @@
 from aws_cdk import (
     Stack,
     CfnOutput,
+    Duration,
     aws_iam as iam,
-    aws_logs as logs,
-    CustomResource,
-    custom_resources as cr,
+    aws_bedrockagentcore as agentcore,
 )
 from constructs import Construct
 from stacks.agent_stack import AgentStack
-import json
 
 
 class EvaluationStack(Stack):
@@ -89,95 +87,32 @@ class EvaluationStack(Stack):
         sampling_percentage = 100.0 if environment == "dev" else 10.0
         config_name = f"docint_agent_eval_{environment}"
 
-        # Get agent runtime log group name from agent stack outputs
+        # Get agent runtime log group name
         # Format: /aws/bedrock-agentcore/runtimes/{runtime_name}-{id}-{endpoint_name}
-        agent_log_group = f"/aws/bedrock-agentcore/runtimes/docint_agent-lsc56PDJsX-docint_agent_endpoint"
+        agent_log_group = "/aws/bedrock-agentcore/runtimes/docint_agent-lsc56PDJsX-docint_agent_endpoint"
         service_name = "docint_agent.docint_agent_endpoint"
 
-        # Create online evaluation config using Custom Resource
-        # Note: CDK doesn't have L1/L2 constructs for bedrock-agentcore evaluations yet
-        eval_config = cr.AwsCustomResource(
+        # Create online evaluation config using L2 construct (native CloudFormation support)
+        eval_config = agentcore.OnlineEvaluationConfig(
             self, "OnlineEvaluationConfig",
-            on_create=cr.AwsSdkCall(
-                service="BedrockAgentCoreControl",
-                action="createOnlineEvaluationConfig",
-                parameters={
-                    "onlineEvaluationConfigName": config_name,
-                    "description": f"CDK-managed evaluation for docint agent ({environment})",
-                    "dataSourceConfig": {
-                        "cloudWatchLogs": {
-                            "logGroupNames": [agent_log_group],
-                            "serviceNames": [service_name],
-                        }
-                    },
-                    "evaluators": [
-                        {"evaluatorId": "Builtin.Conciseness"},
-                        {"evaluatorId": "Builtin.Correctness"},
-                        {"evaluatorId": "Builtin.GoalSuccessRate"},
-                        {"evaluatorId": "Builtin.InstructionFollowing"},
-                        {"evaluatorId": "Builtin.ToolParameterAccuracy"},
-                        {"evaluatorId": "Builtin.ToolSelectionAccuracy"},
-                    ],
-                    "rule": {
-                        "samplingConfig": {
-                            "samplingPercentage": sampling_percentage,
-                        },
-                        "sessionConfig": {
-                            "sessionTimeoutMinutes": 5,
-                        },
-                    },
-                    "evaluationExecutionRoleArn": evaluation_role.role_arn,
-                    "enableOnCreate": True,
-                },
-                physical_resource_id=cr.PhysicalResourceId.from_response("onlineEvaluationConfigId"),
+            online_evaluation_config_name=config_name,
+            description=f"CDK-managed evaluation for docint agent ({environment})",
+            data_source=agentcore.DataSourceConfig.from_cloud_watch_logs(
+                log_group_names=[agent_log_group],
+                service_names=[service_name],
             ),
-            on_update=cr.AwsSdkCall(
-                service="BedrockAgentCoreControl",
-                action="updateOnlineEvaluationConfig",
-                parameters={
-                    "onlineEvaluationConfigId": cr.PhysicalResourceIdReference(),
-                    "evaluators": [
-                        {"evaluatorId": "Builtin.Conciseness"},
-                        {"evaluatorId": "Builtin.Correctness"},
-                        {"evaluatorId": "Builtin.GoalSuccessRate"},
-                        {"evaluatorId": "Builtin.InstructionFollowing"},
-                        {"evaluatorId": "Builtin.ToolParameterAccuracy"},
-                        {"evaluatorId": "Builtin.ToolSelectionAccuracy"},
-                    ],
-                    "rule": {
-                        "samplingConfig": {
-                            "samplingPercentage": sampling_percentage,
-                        },
-                        "sessionConfig": {
-                            "sessionTimeoutMinutes": 5,
-                        },
-                    },
-                    "evaluationExecutionRoleArn": evaluation_role.role_arn,
-                    "executionStatus": "ENABLED",
-                },
-            ),
-            on_delete=cr.AwsSdkCall(
-                service="BedrockAgentCoreControl",
-                action="deleteOnlineEvaluationConfig",
-                parameters={
-                    "onlineEvaluationConfigId": cr.PhysicalResourceIdReference(),
-                },
-            ),
-            policy=cr.AwsCustomResourcePolicy.from_statements([
-                iam.PolicyStatement(
-                    actions=[
-                        "bedrock-agentcore-control:CreateOnlineEvaluationConfig",
-                        "bedrock-agentcore-control:UpdateOnlineEvaluationConfig",
-                        "bedrock-agentcore-control:DeleteOnlineEvaluationConfig",
-                        "bedrock-agentcore-control:GetOnlineEvaluationConfig",
-                    ],
-                    resources=["*"],
-                ),
-                iam.PolicyStatement(
-                    actions=["iam:PassRole"],
-                    resources=[evaluation_role.role_arn],
-                ),
-            ]),
+            evaluators=[
+                agentcore.EvaluatorSelector.builtin(agentcore.BuiltinEvaluator.CONCISENESS),
+                agentcore.EvaluatorSelector.builtin(agentcore.BuiltinEvaluator.CORRECTNESS),
+                agentcore.EvaluatorSelector.builtin(agentcore.BuiltinEvaluator.GOAL_SUCCESS_RATE),
+                agentcore.EvaluatorSelector.builtin(agentcore.BuiltinEvaluator.INSTRUCTION_FOLLOWING),
+                agentcore.EvaluatorSelector.builtin(agentcore.BuiltinEvaluator.TOOL_PARAMETER_ACCURACY),
+                agentcore.EvaluatorSelector.builtin(agentcore.BuiltinEvaluator.TOOL_SELECTION_ACCURACY),
+            ],
+            sampling_percentage=sampling_percentage,
+            session_timeout=Duration.minutes(5),
+            execution_role=evaluation_role,
+            execution_status=agentcore.ExecutionStatus.ENABLED,
         )
 
         # Ensure role exists before creating evaluation config
@@ -192,9 +127,9 @@ class EvaluationStack(Stack):
         )
 
         CfnOutput(
-            self, "EvaluationConfigId",
-            value=eval_config.get_response_field("onlineEvaluationConfigId"),
-            description="Online evaluation config ID",
+            self, "EvaluationConfigArn",
+            value=eval_config.online_evaluation_config_arn,
+            description="Online evaluation config ARN",
         )
 
         CfnOutput(

@@ -159,3 +159,7 @@ class AgentStack(Stack):
         CfnOutput(self, "RuntimeId", value=runtime.attr_agent_runtime_id)
         CfnOutput(self, "EndpointArn", value=endpoint.attr_agent_runtime_endpoint_arn)
         CfnOutput(self, "MemoryId", value=memory.attr_memory_id)
+
+        # Store for cross-stack references
+        self.runtime = runtime
+        self.endpoint = endpoint

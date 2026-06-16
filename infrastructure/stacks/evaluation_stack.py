@@ -95,20 +95,23 @@ class EvaluationStack(Stack):
         sampling_percentage = 100.0 if environment == "dev" else 10.0
         config_name = f"docint_agent_eval_{environment}"
 
-        # Get agent runtime log group name
-        # Format: /aws/bedrock-agentcore/runtimes/{runtime_name}-{id}-{endpoint_name}
-        agent_log_group = "/aws/bedrock-agentcore/runtimes/docint_agent-lsc56PDJsX-docint_agent_endpoint"
-        service_name = "docint_agent.docint_agent_endpoint"
+        # Import runtime from agent stack for evaluation data source
+        # Agent stack uses CfnRuntime (L1), need to wrap as Runtime (L2) for evaluation
+        imported_runtime = agentcore.Runtime.from_agent_runtime_attributes(
+            self, "ImportedRuntime",
+            agent_runtime_id=agent_stack.runtime.attr_agent_runtime_id,
+            agent_runtime_arn=f"arn:aws:bedrock-agentcore:{self.region}:{self.account}:runtime/{agent_stack.runtime.attr_agent_runtime_id}",
+            agent_runtime_name="docint_agent",
+            role_arn=agent_stack.runtime.role_arn,
+        )
 
         # Create online evaluation config using L2 construct (native CloudFormation support)
+        # Using agent runtime endpoint as data source (more direct than CloudWatch Logs)
         eval_config = agentcore.OnlineEvaluationConfig(
             self, "OnlineEvaluationConfig",
             online_evaluation_config_name=config_name,
             description=f"CDK-managed evaluation for docint agent ({environment})",
-            data_source=agentcore.DataSourceConfig.from_cloud_watch_logs(
-                log_group_names=[agent_log_group],
-                service_names=[service_name],
-            ),
+            data_source=agentcore.DataSourceConfig.from_agent_runtime_endpoint(imported_runtime),
             evaluators=[
                 agentcore.EvaluatorSelector.builtin(agentcore.BuiltinEvaluator.CONCISENESS),
                 agentcore.EvaluatorSelector.builtin(agentcore.BuiltinEvaluator.CORRECTNESS),

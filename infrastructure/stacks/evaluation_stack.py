@@ -26,9 +26,15 @@ class EvaluationStack(Stack):
             assumed_by=iam.PrincipalWithConditions(
                 iam.ServicePrincipal("bedrock-agentcore.amazonaws.com"),
                 conditions={
-                    "StringEquals": {"aws:SourceAccount": self.account},
+                    "StringEquals": {
+                        "aws:SourceAccount": self.account,
+                        "aws:ResourceAccount": self.account,
+                    },
                     "ArnLike": {
-                        "aws:SourceArn": f"arn:aws:bedrock-agentcore:{self.region}:{self.account}:online-evaluation-config/*"
+                        "aws:SourceArn": [
+                            f"arn:aws:bedrock-agentcore:{self.region}:{self.account}:evaluator/*",
+                            f"arn:aws:bedrock-agentcore:{self.region}:{self.account}:online-evaluation-config/*",
+                        ]
                     },
                 },
             ),
@@ -36,18 +42,15 @@ class EvaluationStack(Stack):
         )
 
         # CloudWatch Logs permissions - read agent runtime logs and write evaluation results
+        # Note: Must use wildcard resource per AWS Bedrock requirements
         evaluation_role.add_to_policy(iam.PolicyStatement(
             sid="CloudWatchLogsRead",
             actions=[
                 "logs:DescribeLogGroups",
-                "logs:DescribeLogStreams",
-                "logs:GetLogEvents",
-                "logs:FilterLogEvents",
+                "logs:GetQueryResults",
+                "logs:StartQuery",
             ],
-            resources=[
-                f"arn:aws:logs:{self.region}:{self.account}:log-group:/aws/bedrock-agentcore/runtimes/*:*",
-                f"arn:aws:logs:{self.region}:{self.account}:log-group:aws/spans:*",
-            ],
+            resources=["*"],
         ))
 
         evaluation_role.add_to_policy(iam.PolicyStatement(
@@ -66,10 +69,11 @@ class EvaluationStack(Stack):
         evaluation_role.add_to_policy(iam.PolicyStatement(
             sid="CloudWatchIndexing",
             actions=[
+                "logs:DescribeIndexPolicies",
                 "logs:PutIndexPolicy",
-                "logs:GetIndexPolicy",
             ],
             resources=[
+                f"arn:aws:logs:{self.region}:{self.account}:log-group:aws/spans",
                 f"arn:aws:logs:{self.region}:{self.account}:log-group:aws/spans:*",
             ],
         ))
@@ -77,9 +81,13 @@ class EvaluationStack(Stack):
         # Bedrock model invocation for evaluators (if custom evaluators are added later)
         evaluation_role.add_to_policy(iam.PolicyStatement(
             sid="BedrockModelInvocation",
-            actions=["bedrock:InvokeModel"],
+            actions=[
+                "bedrock:InvokeModel",
+                "bedrock:InvokeModelWithResponseStream",
+            ],
             resources=[
-                "arn:aws:bedrock:*::foundation-model/*",
+                "arn:aws:bedrock:*::foundation-model/-",
+                f"arn:aws:bedrock:*:{self.account}:inference-profile/-",
             ],
         ))
 

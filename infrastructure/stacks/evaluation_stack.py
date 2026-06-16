@@ -111,7 +111,9 @@ class EvaluationStack(Stack):
             self, "OnlineEvaluationConfig",
             online_evaluation_config_name=config_name,
             description=f"CDK-managed evaluation for docint agent ({environment})",
-            data_source=agentcore.DataSourceConfig.from_agent_runtime_endpoint(imported_runtime),
+            data_source=agentcore.DataSourceConfig.from_agent_runtime_endpoint_name(
+                imported_runtime, "docint_agent_endpoint"
+            ),
             evaluators=[
                 agentcore.EvaluatorSelector.builtin(agentcore.BuiltinEvaluator.CONCISENESS),
                 agentcore.EvaluatorSelector.builtin(agentcore.BuiltinEvaluator.CORRECTNESS),

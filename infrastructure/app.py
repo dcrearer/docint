@@ -7,6 +7,7 @@ from stacks.gateway_stack import GatewayStack
 from stacks.agent_stack import AgentStack
 from stacks.monitoring_stack import MonitoringStack
 from stacks.auth_stack import AuthStack
+from stacks.evaluation_stack import EvaluationStack
 
 app = cdk.App()
 
@@ -29,7 +30,8 @@ AuthStack(app, "DocintAuthStack", env=env)
 db_stack = DatabaseStack(app, "DocintDatabaseStack", env=env)
 lambda_stack = LambdaStack(app, "DocintLambdaStack", database=db_stack, environment=environment, env=env)
 gateway_stack = GatewayStack(app, "DocintGatewayStack", lambdas=lambda_stack, env=env)
-AgentStack(app, "DocintAgentStack", gateway=gateway_stack, env=env)
+agent_stack = AgentStack(app, "DocintAgentStack", gateway=gateway_stack, env=env)
 MonitoringStack(app, "DocintMonitoringStack", lambdas=lambda_stack, database=db_stack, env=env)
+EvaluationStack(app, "DocintEvaluationStack", agent_stack=agent_stack, environment=environment if environment else "prod", env=env)
 
 app.synth()

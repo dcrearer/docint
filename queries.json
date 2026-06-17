@@ -1,0 +1,23 @@
+[
+  {
+    "query": "Explain Rust lifetimes in two sentences.",
+    "reference_answer": "**Rust lifetimes are annotations that specify how long references are valid**, ensuring borrowed values don't outlive their owners and preventing use-after-free bugs. **They enable the compiler to enforce the borrowing rules at compile-time** without requiring a garbage collector, making memory safety automatic while maintaining performance.",
+    "tenant_id": "f438e448-90f1-7014-9137-307e65766e46",
+    "limit": 5,
+    "category": "content_search"
+  },
+  {
+    "query": "Explain Route53 in two sentences.",
+    "reference_answer": "**Route 53 is AWS's managed DNS service that translates domain names into IP addresses** while offering advanced routing policies (geolocation, latency-based, weighted, failover) to direct traffic intelligently across distributed infrastructure. **It also provides health checks, DNSSEC support, and hybrid DNS resolution** enabling seamless DNS management across AWS and on-premises environments.",
+    "tenant_id": "f438e448-90f1-7014-9137-307e65766e46",
+    "limit": 5,
+    "category": "metadata_query"
+  },
+  {
+    "query": "Show me documents about Rust",
+    "reference_answer": "Rust Python interoperability",
+    "tenant_id": "f438e448-90f1-7014-9137-307e65766e46",
+    "limit": 5,
+    "category": "edge_case"
+  }
+]
